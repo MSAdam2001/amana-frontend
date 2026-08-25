@@ -1,4 +1,4 @@
- const API_URL = 'http://localhost:3000';
+const API_URL = 'http://localhost:3000';
 
 export interface CreateBookingParams {
   artisanProfileId: string;
@@ -34,6 +34,36 @@ export async function createBooking(params: CreateBookingParams): Promise<Bookin
   if (!response.ok) {
     const errorData = await response.json().catch(() => null);
     throw new Error(errorData?.message || 'Failed to create booking');
+  }
+
+  return response.json();
+}
+
+export interface MyBooking {
+  _id: string;
+  customerId: string;
+  artisanProfileId: string;
+  description: string;
+  status: string;
+  scheduledAt?: string;
+  createdAt: string;
+}
+
+export async function getMyBookings(role: 'customer' | 'artisan'): Promise<MyBooking[]> {
+  const token = localStorage.getItem('amana_token');
+
+  if (!token) {
+    throw new Error('You must be logged in to view bookings');
+  }
+
+  const response = await fetch(`${API_URL}/bookings?role=${role}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch bookings');
   }
 
   return response.json();
