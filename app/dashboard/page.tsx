@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getMyBookings, updateBookingStatus, MyBooking } from '@/lib/api/bookings';
+import { createReview } from '@/lib/api/reviews';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -12,6 +13,13 @@ export default function DashboardPage() {
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [actionError, setActionError] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [reviewedIds, setReviewedIds] = useState<string[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem('amana_token');
@@ -59,6 +67,29 @@ export default function DashboardPage() {
       setActionError(err.message || 'Failed to update booking');
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  function openReviewForm(bookingId: string) {
+    setReviewingId(bookingId);
+    setReviewRating(5);
+    setReviewComment('');
+    setReviewError('');
+  }
+
+  async function handleReviewSubmit(e: React.FormEvent, bookingId: string) {
+    e.preventDefault();
+    setReviewSubmitting(true);
+    setReviewError('');
+
+    try {
+      await createReview({ bookingId, rating: reviewRating, comment: reviewComment || undefined });
+      setReviewedIds((prev) => [...prev, bookingId]);
+      setReviewingId(null);
+    } catch (err: any) {
+      setReviewError(err.message || 'Failed to submit review');
+    } finally {
+      setReviewSubmitting(false);
     }
   }
 
@@ -160,6 +191,68 @@ export default function DashboardPage() {
                   >
                     {updatingId === booking._id ? 'Updating...' : 'Mark completed'}
                   </button>
+                )}
+
+                {!isArtisan && booking.status === 'completed' && (
+                  <>
+                    {reviewedIds.includes(booking._id) ? (
+                      <p className="font-body text-teal-800 font-medium mt-3">
+                        Review submitted — thank you!
+                      </p>
+                    ) : reviewingId === booking._id ? (
+                      <form
+                        onSubmit={(e) => handleReviewSubmit(e, booking._id)}
+                        className="mt-3 flex flex-col gap-2"
+                      >
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              type="button"
+                              key={star}
+                              onClick={() => setReviewRating(star)}
+                              className={`text-2xl ${
+                                star <= reviewRating ? 'text-terracotta-600' : 'text-teal-800/20'
+                              }`}
+                            >
+                              ★
+                            </button>
+                          ))}
+                        </div>
+                        <textarea
+                          placeholder="Optional comment about the job"
+                          value={reviewComment}
+                          onChange={(e) => setReviewComment(e.target.value)}
+                          className="font-body w-full p-2 border border-teal-800/20 rounded-sm text-sm"
+                        />
+                        {reviewError && (
+                          <p className="font-body text-red-600 text-sm">{reviewError}</p>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={reviewSubmitting}
+                            className="font-body bg-terracotta-600 hover:bg-terracotta-700 text-sand-50 px-4 py-2 rounded-sm transition-colors text-sm"
+                          >
+                            {reviewSubmitting ? 'Submitting...' : 'Submit review'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReviewingId(null)}
+                            className="font-body border border-teal-800/30 text-teal-900 px-4 py-2 rounded-sm text-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <button
+                        onClick={() => openReviewForm(booking._id)}
+                        className="font-body border border-terracotta-600 text-terracotta-600 px-4 py-2 rounded-sm transition-colors text-sm mt-3"
+                      >
+                        Leave a review
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             ))}

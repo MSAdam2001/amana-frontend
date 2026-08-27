@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { searchArtisans, ArtisanSearchResult } from '@/lib/api/search';
 import { createBooking } from '@/lib/api/bookings';
 
@@ -150,7 +151,19 @@ export default function SearchPage() {
             key={artisan._id}
             style={{ border: '1px solid #ddd', padding: '1rem', borderRadius: '4px' }}
           >
-            <p style={{ fontWeight: 600, textTransform: 'capitalize' }}>{artisan.tradeCategory}</p>
+            <Link
+              href={`/artisan/${artisan._id}`}
+              style={{
+                fontWeight: 600,
+                textTransform: 'capitalize',
+                color: 'var(--color-teal-900)',
+                textDecoration: 'none',
+                display: 'block',
+                marginBottom: '0.25rem',
+              }}
+            >
+              {artisan.tradeCategory} →
+            </Link>
             <p>
               {artisan.ratingAvg ? `★ ${artisan.ratingAvg.toFixed(1)} (${artisan.ratingCount} reviews)` : 'No reviews yet'}
             </p>
