@@ -1,4 +1,3 @@
- 
 const API_URL = 'http://localhost:3000';
 
 export interface ArtisanProfileDetail {
@@ -21,6 +20,26 @@ export async function getArtisanProfile(id: string): Promise<ArtisanProfileDetai
 
   if (!response.ok) {
     throw new Error('Artisan profile not found');
+  }
+
+  return response.json();
+}
+
+export async function getMyArtisanProfile(): Promise<ArtisanProfileDetail> {
+  const token = localStorage.getItem('amana_token');
+
+  if (!token) {
+    throw new Error('You must be logged in to view your profile');
+  }
+
+  const response = await fetch(`${API_URL}/profiles/artisan/me`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to load your profile');
   }
 
   return response.json();

@@ -1,4 +1,3 @@
- 
 'use client';
 
 import Link from 'next/link';
@@ -7,16 +6,30 @@ import { usePathname } from 'next/navigation';
 
 export default function NavHeader() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
   const pathname = usePathname();
 
   useEffect(() => {
     const token = localStorage.getItem('amana_token');
     setIsLoggedIn(!!token);
+
+    if (!token) {
+      setRole(null);
+      return;
+    }
+
+    fetch('http://localhost:3000/auth/profile', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setRole(data?.role ?? null))
+      .catch(() => setRole(null));
   }, [pathname]);
 
   function handleLogout() {
     localStorage.removeItem('amana_token');
     setIsLoggedIn(false);
+    setRole(null);
     window.location.href = '/';
   }
 
@@ -49,6 +62,11 @@ export default function NavHeader() {
 
         {isLoggedIn ? (
           <>
+            {role === 'artisan' && (
+              <Link href="/edit-profile" style={{ color: 'var(--color-teal-900)', textDecoration: 'none' }}>
+                Edit profile
+              </Link>
+            )}
             <Link href="/dashboard" style={{ color: 'var(--color-teal-900)', textDecoration: 'none' }}>
               Dashboard
             </Link>
