@@ -1,4 +1,4 @@
- 'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -68,7 +68,7 @@ export default function ArtisanProfilePage() {
           {profile.tradeCategory}
         </h1>
 
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
           {profile.ratingCount > 0 ? (
             <p className="font-body text-teal-800">
               ★ {profile.ratingAvg.toFixed(1)} ({profile.ratingCount} review{profile.ratingCount !== 1 ? 's' : ''})
@@ -80,6 +80,16 @@ export default function ArtisanProfilePage() {
           <p className="font-body text-sm capitalize text-teal-800/70">
             {profile.verificationStatus}
           </p>
+          <span className="text-teal-800/30">•</span>
+          <span
+            className={`font-body text-sm px-2 py-0.5 rounded-sm ${
+              profile.isAvailable
+                ? 'bg-teal-800/10 text-teal-800'
+                : 'bg-sand-100 text-teal-800/60'
+            }`}
+          >
+            {profile.isAvailable ? 'Available now' : 'Not available'}
+          </span>
         </div>
 
         {profile.bio && (

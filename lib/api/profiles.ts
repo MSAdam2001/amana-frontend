@@ -50,6 +50,7 @@ export interface UpdateProfileParams {
   skills?: string[];
   yearsExperience?: number;
   portfolioPhotos?: string[];
+  isAvailable?: boolean;
 }
 
 export async function updateMyArtisanProfile(params: UpdateProfileParams): Promise<ArtisanProfileDetail> {

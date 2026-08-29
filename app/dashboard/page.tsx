@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getMyBookings, updateBookingStatus, MyBooking } from '@/lib/api/bookings';
 import { createReview } from '@/lib/api/reviews';
+import { getMyArtisanProfile, updateMyArtisanProfile } from '@/lib/api/profiles';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -20,6 +21,10 @@ export default function DashboardPage() {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewError, setReviewError] = useState('');
   const [reviewedIds, setReviewedIds] = useState<string[]>([]);
+
+  const [isAvailable, setIsAvailable] = useState(false);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState('');
 
   useEffect(() => {
     const token = localStorage.getItem('amana_token');
@@ -54,6 +59,29 @@ export default function DashboardPage() {
       .catch(() => setBookings([]))
       .finally(() => setBookingsLoading(false));
   }, [user]);
+
+  useEffect(() => {
+    if (!user || user.role !== 'artisan') return;
+
+    getMyArtisanProfile()
+      .then((profile) => setIsAvailable(profile.isAvailable))
+      .catch(() => {});
+  }, [user]);
+
+  async function handleAvailabilityToggle() {
+    const newValue = !isAvailable;
+    setAvailabilityLoading(true);
+    setAvailabilityError('');
+
+    try {
+      await updateMyArtisanProfile({ isAvailable: newValue });
+      setIsAvailable(newValue);
+    } catch (err: any) {
+      setAvailabilityError(err.message || 'Failed to update availability');
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  }
 
   async function handleStatusChange(bookingId: string, newStatus: string) {
     setActionError('');
@@ -120,6 +148,33 @@ export default function DashboardPage() {
             <span className="text-teal-900 font-medium">Role:</span> {user?.role}
           </p>
         </div>
+
+        {isArtisan && (
+          <div className="bg-white border border-teal-800/10 rounded-sm p-6 mb-8 flex items-center justify-between">
+            <div>
+              <p className="font-body font-medium text-teal-900">
+                {isAvailable ? 'You are marked as available' : 'You are marked as unavailable'}
+              </p>
+              <p className="font-body text-sm text-teal-800/60 mt-1">
+                Customers see this on your profile before booking you.
+              </p>
+              {availabilityError && (
+                <p className="font-body text-red-600 text-sm mt-1">{availabilityError}</p>
+              )}
+            </div>
+            <button
+              onClick={handleAvailabilityToggle}
+              disabled={availabilityLoading}
+              className={`font-body px-4 py-2 rounded-sm text-sm font-medium transition-colors ${
+                isAvailable
+                  ? 'bg-terracotta-600 hover:bg-terracotta-700 text-sand-50'
+                  : 'border border-teal-800/30 text-teal-900'
+              }`}
+            >
+              {availabilityLoading ? 'Updating...' : isAvailable ? 'Available now' : 'Mark as available'}
+            </button>
+          </div>
+        )}
 
         <h2 className="font-display text-2xl text-teal-900 mb-4">
           {isArtisan ? 'Incoming requests' : 'My bookings'}
