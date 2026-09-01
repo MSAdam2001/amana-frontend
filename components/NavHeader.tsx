@@ -33,6 +33,8 @@ export default function NavHeader() {
     window.location.href = '/';
   }
 
+  const isArtisan = role === 'artisan';
+
   return (
     <header
       style={{
@@ -56,13 +58,15 @@ export default function NavHeader() {
       </Link>
 
       <nav style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-        <Link href="/search" style={{ color: 'var(--color-teal-900)', textDecoration: 'none' }}>
-          Find an artisan
-        </Link>
+        {!isArtisan && (
+          <Link href="/search" style={{ color: 'var(--color-teal-900)', textDecoration: 'none' }}>
+            Find an artisan
+          </Link>
+        )}
 
         {isLoggedIn ? (
           <>
-            {role === 'artisan' && (
+            {isArtisan && (
               <Link href="/edit-profile" style={{ color: 'var(--color-teal-900)', textDecoration: 'none' }}>
                 Edit profile
               </Link>

@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { getMyBookings, updateBookingStatus, MyBooking } from '@/lib/api/bookings';
 import { createReview } from '@/lib/api/reviews';
-import { getMyArtisanProfile, updateMyArtisanProfile } from '@/lib/api/profiles';
+import { getMyArtisanProfile, updateMyArtisanProfile, ArtisanProfileDetail } from '@/lib/api/profiles';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -22,7 +23,7 @@ export default function DashboardPage() {
   const [reviewError, setReviewError] = useState('');
   const [reviewedIds, setReviewedIds] = useState<string[]>([]);
 
-  const [isAvailable, setIsAvailable] = useState(false);
+  const [myProfile, setMyProfile] = useState<ArtisanProfileDetail | null>(null);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState('');
 
@@ -64,18 +65,19 @@ export default function DashboardPage() {
     if (!user || user.role !== 'artisan') return;
 
     getMyArtisanProfile()
-      .then((profile) => setIsAvailable(profile.isAvailable))
+      .then((profile) => setMyProfile(profile))
       .catch(() => {});
   }, [user]);
 
   async function handleAvailabilityToggle() {
-    const newValue = !isAvailable;
+    if (!myProfile) return;
+    const newValue = !myProfile.isAvailable;
     setAvailabilityLoading(true);
     setAvailabilityError('');
 
     try {
-      await updateMyArtisanProfile({ isAvailable: newValue });
-      setIsAvailable(newValue);
+      const updated = await updateMyArtisanProfile({ isAvailable: newValue });
+      setMyProfile(updated);
     } catch (err: any) {
       setAvailabilityError(err.message || 'Failed to update availability');
     } finally {
@@ -131,6 +133,24 @@ export default function DashboardPage() {
 
   const isArtisan = user?.role === 'artisan';
 
+  const statusCounts = bookings.reduce<Record<string, number>>((acc, b) => {
+    acc[b.status] = (acc[b.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  const statLabels: { key: string; label: string }[] = isArtisan
+    ? [
+        { key: 'requested', label: 'New requests' },
+        { key: 'accepted', label: 'Accepted' },
+        { key: 'in_progress', label: 'In progress' },
+        { key: 'completed', label: 'Completed' },
+      ]
+    : [
+        { key: 'requested', label: 'Pending' },
+        { key: 'in_progress', label: 'In progress' },
+        { key: 'completed', label: 'Completed' },
+      ];
+
   return (
     <main className="min-h-screen bg-sand-50 px-6 py-16">
       <div className="max-w-3xl mx-auto">
@@ -140,6 +160,67 @@ export default function DashboardPage() {
         <h1 className="font-display text-4xl text-teal-900 mb-6">
           Welcome back
         </h1>
+
+        {!bookingsLoading && bookings.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+            {statLabels.map(({ key, label }) => (
+              <div
+                key={key}
+                className="bg-white border border-teal-800/10 rounded-sm p-4 text-center"
+              >
+                <p className="font-display text-2xl text-teal-900">
+                  {statusCounts[key] || 0}
+                </p>
+                <p className="font-body text-xs text-teal-800/60 mt-1">{label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {isArtisan && myProfile && (
+          <div className="bg-white border border-teal-800/10 rounded-sm p-6 mb-8">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <p className="font-body font-medium text-teal-900">
+                  {myProfile.ratingCount > 0
+                    ? `★ ${myProfile.ratingAvg.toFixed(1)} rating (${myProfile.ratingCount} review${myProfile.ratingCount !== 1 ? 's' : ''})`
+                    : 'No reviews yet'}
+                </p>
+                <Link
+                  href={`/artisan/${myProfile._id}`}
+                  className="font-body text-sm text-terracotta-600 hover:underline"
+                >
+                  View my public profile →
+                </Link>
+              </div>
+
+              <div className="text-right">
+                <p className="font-body text-sm text-teal-900 mb-1">
+                  {myProfile.isAvailable ? 'Marked as available' : 'Marked as unavailable'}
+                </p>
+                <button
+                  onClick={handleAvailabilityToggle}
+                  disabled={availabilityLoading}
+                  className={`font-body px-4 py-2 rounded-sm text-sm font-medium transition-colors ${
+                    myProfile.isAvailable
+                      ? 'bg-terracotta-600 hover:bg-terracotta-700 text-sand-50'
+                      : 'border border-teal-800/30 text-teal-900'
+                  }`}
+                >
+                  {availabilityLoading
+                    ? 'Updating...'
+                    : myProfile.isAvailable
+                    ? 'Available now'
+                    : 'Mark as available'}
+                </button>
+                {availabilityError && (
+                  <p className="font-body text-red-600 text-xs mt-1">{availabilityError}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white border border-teal-800/10 rounded-sm p-6 mb-8">
           <p className="font-body text-teal-800">
             <span className="text-teal-900 font-medium">User ID:</span> {user?.userId}
@@ -148,33 +229,6 @@ export default function DashboardPage() {
             <span className="text-teal-900 font-medium">Role:</span> {user?.role}
           </p>
         </div>
-
-        {isArtisan && (
-          <div className="bg-white border border-teal-800/10 rounded-sm p-6 mb-8 flex items-center justify-between">
-            <div>
-              <p className="font-body font-medium text-teal-900">
-                {isAvailable ? 'You are marked as available' : 'You are marked as unavailable'}
-              </p>
-              <p className="font-body text-sm text-teal-800/60 mt-1">
-                Customers see this on your profile before booking you.
-              </p>
-              {availabilityError && (
-                <p className="font-body text-red-600 text-sm mt-1">{availabilityError}</p>
-              )}
-            </div>
-            <button
-              onClick={handleAvailabilityToggle}
-              disabled={availabilityLoading}
-              className={`font-body px-4 py-2 rounded-sm text-sm font-medium transition-colors ${
-                isAvailable
-                  ? 'bg-terracotta-600 hover:bg-terracotta-700 text-sand-50'
-                  : 'border border-teal-800/30 text-teal-900'
-              }`}
-            >
-              {availabilityLoading ? 'Updating...' : isAvailable ? 'Available now' : 'Mark as available'}
-            </button>
-          </div>
-        )}
 
         <h2 className="font-display text-2xl text-teal-900 mb-4">
           {isArtisan ? 'Incoming requests' : 'My bookings'}

@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { getMyArtisanProfile, updateMyArtisanProfile } from '@/lib/api/profiles';
+import { getMyArtisanProfile, updateMyArtisanProfile, uploadPhoto } from '@/lib/api/profiles';
 
 export default function EditProfilePage() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -16,7 +17,9 @@ export default function EditProfilePage() {
   const [bio, setBio] = useState('');
   const [yearsExperience, setYearsExperience] = useState(0);
   const [skillsText, setSkillsText] = useState('');
-  const [photosText, setPhotosText] = useState('');
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
 
   useEffect(() => {
     const token = localStorage.getItem('amana_token');
@@ -30,11 +33,33 @@ export default function EditProfilePage() {
         setBio(profile.bio || '');
         setYearsExperience(profile.yearsExperience);
         setSkillsText(profile.skills.join(', '));
-        setPhotosText(profile.portfolioPhotos.join('\n'));
+        setPhotos(profile.portfolioPhotos);
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, [router]);
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadError('');
+
+    try {
+      const url = await uploadPhoto(file);
+      setPhotos((prev) => [...prev, url]);
+    } catch (err: any) {
+      setUploadError(err.message || 'Failed to upload photo');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  function removePhoto(index: number) {
+    setPhotos((prev) => prev.filter((_, i) => i !== index));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,14 +72,14 @@ export default function EditProfilePage() {
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
 
-    const portfolioPhotos = photosText
-      .split('\n')
-      .map((url) => url.trim())
-      .filter((url) => url.length > 0);
-
     try {
-      await updateMyArtisanProfile({ bio, yearsExperience, skills, portfolioPhotos });
+      await updateMyArtisanProfile({ bio, yearsExperience, skills, portfolioPhotos: photos });
       setSaved(true);
+      setBio('');
+      setYearsExperience(0);
+      setSkillsText('');
+      setPhotos([]);
+      router.push('/dashboard');
     } catch (err: any) {
       setSaveError(err.message || 'Failed to save your profile.');
     } finally {
@@ -90,7 +115,7 @@ export default function EditProfilePage() {
           Show customers why they should trust you
         </h1>
         <p className="font-body text-teal-800/70 mb-8">
-          This is what a customer sees before they decide to hire you. Be specific — real
+          This is what a customer sees before they decide to hire you. Be specific, real
           experience and real work speak louder than a generic bio.
         </p>
 
@@ -125,7 +150,7 @@ export default function EditProfilePage() {
           <div>
             <label className="font-body font-medium text-teal-900 block mb-1">Skills</label>
             <p className="font-body text-sm text-teal-800/60 mb-2">
-              Separate each skill with a comma — e.g. Pipe repair, Installation, Emergency callout
+              Separate each skill with a comma, e.g. Pipe repair, Installation, Emergency callout
             </p>
             <input
               type="text"
@@ -141,16 +166,50 @@ export default function EditProfilePage() {
               Photos of your work
             </label>
             <p className="font-body text-sm text-teal-800/60 mb-2">
-              Paste one photo link per line. Customers trust profiles with real photos of
-              completed jobs far more than a bio alone.
+              Upload real photos of completed jobs. Customers trust these far more than a bio alone.
             </p>
-            <textarea
-              value={photosText}
-              onChange={(e) => setPhotosText(e.target.value)}
-              rows={4}
-              placeholder={'https://example.com/photo1.jpg\nhttps://example.com/photo2.jpg'}
-              className="font-body w-full p-2 border border-teal-800/20 rounded-sm text-sm"
+
+            {photos.length > 0 && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-3">
+                {photos.map((url, i) => (
+                  <div key={i} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt={`Work sample ${i + 1}`}
+                      className="w-full aspect-square object-cover rounded-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(i)}
+                      className="absolute top-1 right-1 bg-white/90 text-teal-900 rounded-full w-6 h-6 text-sm leading-none hover:bg-white"
+                    >
+                      x
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              onChange={handleFileSelected}
+              className="hidden"
+              id="photo-upload"
             />
+            <label
+              htmlFor="photo-upload"
+              className="font-body inline-block cursor-pointer border border-teal-800/30 hover:border-teal-800 text-teal-900 px-4 py-2 rounded-sm text-sm transition-colors"
+            >
+              {uploading ? 'Uploading...' : '+ Add a photo'}
+            </label>
+
+            {uploadError && (
+              <p className="font-body text-red-600 text-sm mt-2">{uploadError}</p>
+            )}
           </div>
 
           {saveError && <p className="font-body text-red-600 text-sm">{saveError}</p>}
@@ -167,4 +226,4 @@ export default function EditProfilePage() {
       </div>
     </main>
   );
-} 
+}

@@ -76,3 +76,30 @@ export async function updateMyArtisanProfile(params: UpdateProfileParams): Promi
 
   return response.json();
 }
+
+export async function uploadPhoto(file: File): Promise<string> {
+  const token = localStorage.getItem('amana_token');
+
+  if (!token) {
+    throw new Error('You must be logged in to upload photos');
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_URL}/uploads/photo`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(errorData?.message || 'Failed to upload photo');
+  }
+
+  const data = await response.json();
+  return data.url;
+}
