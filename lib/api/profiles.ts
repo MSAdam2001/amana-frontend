@@ -1,5 +1,11 @@
 const API_URL = 'http://localhost:3000';
 
+export interface SocialMedia {
+  instagram?: string;
+  facebook?: string;
+  tiktok?: string;
+}
+
 export interface ArtisanProfileDetail {
   _id: string;
   userId: string;
@@ -13,6 +19,8 @@ export interface ArtisanProfileDetail {
   verificationStatus: string;
   ratingAvg: number;
   ratingCount: number;
+  socialMedia?: SocialMedia;
+  createdAt?: string;
 }
 
 export async function getArtisanProfile(id: string): Promise<ArtisanProfileDetail> {
@@ -51,6 +59,7 @@ export interface UpdateProfileParams {
   yearsExperience?: number;
   portfolioPhotos?: string[];
   isAvailable?: boolean;
+  socialMedia?: SocialMedia;
 }
 
 export async function updateMyArtisanProfile(params: UpdateProfileParams): Promise<ArtisanProfileDetail> {
@@ -102,4 +111,21 @@ export async function uploadPhoto(file: File): Promise<string> {
 
   const data = await response.json();
   return data.url;
+}
+
+export interface ArtisanReview {
+  _id: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+}
+
+export async function getReviewsForArtisan(artisanProfileId: string): Promise<ArtisanReview[]> {
+  const response = await fetch(`${API_URL}/reviews/artisan/${artisanProfileId}`);
+
+  if (!response.ok) {
+    throw new Error('Failed to load reviews');
+  }
+
+  return response.json();
 }

@@ -1,4 +1,3 @@
- 
 const API_URL = 'http://localhost:3000';
 
 export interface PendingArtisan {
@@ -9,6 +8,7 @@ export interface PendingArtisan {
   skills: string[];
   yearsExperience: number;
   verificationStatus: string;
+  isAvailable?: boolean;
 }
 
 function getAuthHeaders() {
@@ -26,6 +26,18 @@ export async function getPendingArtisans(): Promise<PendingArtisan[]> {
 
   if (!response.ok) {
     throw new Error('Failed to load pending artisans');
+  }
+
+  return response.json();
+}
+
+export async function getAllArtisans(): Promise<PendingArtisan[]> {
+  const response = await fetch(`${API_URL}/profiles/artisan/all`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to load artisans');
   }
 
   return response.json();
