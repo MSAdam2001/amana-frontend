@@ -25,11 +25,11 @@ export default function NavHeader() {
       return;
     }
 
-    fetch('http://localhost:3000/auth/profile', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+})
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setRole(data?.role ?? null))
       .catch(() => setRole(null));

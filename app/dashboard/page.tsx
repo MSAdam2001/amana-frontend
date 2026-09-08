@@ -361,12 +361,11 @@ export default function DashboardPage() {
       router.push('/login');
       return;
     }
-
-    fetch('http://localhost:3000/auth/profile', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+})
       .then((res) => {
         if (!res.ok) {
           throw new Error('Session expired');

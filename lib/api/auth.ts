@@ -1,5 +1,5 @@
 
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://amana-backend-2.onrender.com';
 
 export async function loginUser(phone: string, password: string) {
   const response = await fetch(`${API_BASE_URL}/auth/login`, {

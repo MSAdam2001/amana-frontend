@@ -25,18 +25,18 @@ export default function RegisterPage() {
       localStorage.setItem('amana_token', loginData.accessToken);
 
       if (role === 'artisan') {
-        await fetch('http://localhost:3000/profiles/artisan', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${loginData.accessToken}`,
-          },
-          body: JSON.stringify({
-            tradeCategory: tradeCategory || 'general',
-            longitude: 8.5167,
-            latitude: 12.0,
-          }),
-        });
+       await fetch(`${process.env.NEXT_PUBLIC_API_URL}/profiles/artisan`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${loginData.accessToken}`,
+  },
+  body: JSON.stringify({
+    tradeCategory: tradeCategory || 'general',
+    longitude: 8.5167,
+    latitude: 12.0,
+  }),
+});
         router.push('/edit-profile');
       } else {
         router.push('/dashboard');
