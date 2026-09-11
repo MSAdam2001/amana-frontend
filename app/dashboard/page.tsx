@@ -373,10 +373,14 @@ fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
 
         return res.json();
       })
-      .then((data) => {
-        setUser(data);
-        setLoading(false);
-      })
+     .then((data) => {
+  if (data.role !== 'artisan' && data.role !== 'admin') {
+    router.push('/');
+    return;
+  }
+  setUser(data);
+  setLoading(false);
+})
       .catch(() => {
         localStorage.removeItem('amana_token');
         router.push('/login');

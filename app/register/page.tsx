@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { registerUser, loginUser } from '@/lib/api/auth';
 
 export default function RegisterPage() {
   const router = useRouter();
+
   const [role, setRole] = useState<'customer' | 'artisan'>('customer');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -15,34 +17,56 @@ export default function RegisterPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
     setError('');
     setLoading(true);
 
     try {
+      // 1. Create the user account
       await registerUser(phone, password, role);
 
+      // 2. Automatically log the user in
       const loginData = await loginUser(phone, password);
+
+      // 3. Save JWT token
       localStorage.setItem('amana_token', loginData.accessToken);
 
+      // 4. If the user is an artisan, create their artisan profile
       if (role === 'artisan') {
-       await fetch(`${process.env.NEXT_PUBLIC_API_URL}/profiles/artisan`, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${loginData.accessToken}`,
-  },
-  body: JSON.stringify({
-    tradeCategory: tradeCategory || 'general',
-    longitude: 8.5167,
-    latitude: 12.0,
-  }),
-});
-        router.push('/edit-profile');
+        const response = await fetch(
+  ` ${process.env.NEXT_PUBLIC_API_URL}/profiles/artisan`,
+  {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${loginData.accessToken}`,
+            },
+            body: JSON.stringify({
+              tradeCategory: tradeCategory || 'general',
+              longitude: 8.5167,
+              latitude: 12.0,
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => null);
+
+          throw new Error(
+            errorData?.message || 'Failed to create artisan profile'
+          );
+        }
+
+        // 5. Send artisan to the Profile section of the dashboard
+        router.push('/dashboard?section=profile');
       } else {
-        router.push('/dashboard');
+        // Customer goes to homepage
+        router.push('/');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(
+        err instanceof Error ? err.message : 'Something went wrong'
+      );
     } finally {
       setLoading(false);
     }
@@ -54,10 +78,12 @@ export default function RegisterPage() {
         <p className="font-body text-sm tracking-wide uppercase text-terracotta-600 mb-2">
           Amana
         </p>
+
         <h1 className="font-display text-3xl text-teal-900 mb-8">
           Create your account
         </h1>
 
+        {/* Role selection */}
         <div className="flex gap-2 mb-6">
           <button
             type="button"
@@ -70,6 +96,7 @@ export default function RegisterPage() {
           >
             I need a service
           </button>
+
           <button
             type="button"
             onClick={() => setRole('artisan')}
@@ -83,11 +110,14 @@ export default function RegisterPage() {
           </button>
         </div>
 
+        {/* Registration form */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Phone */}
           <div>
             <label className="font-body text-sm text-teal-800 block mb-1">
               Phone number
             </label>
+
             <input
               type="tel"
               value={phone}
@@ -98,10 +128,12 @@ export default function RegisterPage() {
             />
           </div>
 
+          {/* Password */}
           <div>
             <label className="font-body text-sm text-teal-800 block mb-1">
               Password
             </label>
+
             <input
               type="password"
               value={password}
@@ -113,11 +145,13 @@ export default function RegisterPage() {
             />
           </div>
 
+          {/* Artisan trade */}
           {role === 'artisan' && (
             <div>
               <label className="font-body text-sm text-teal-800 block mb-1">
                 Your trade
               </label>
+
               <input
                 type="text"
                 value={tradeCategory}
@@ -129,12 +163,14 @@ export default function RegisterPage() {
             </div>
           )}
 
+          {/* Error */}
           {error && (
             <p className="font-body text-sm text-red-700 bg-red-50 border border-red-200 rounded-sm px-4 py-2">
               {error}
             </p>
           )}
 
+          {/* Submit */}
           <button
             type="submit"
             disabled={loading}
@@ -144,11 +180,15 @@ export default function RegisterPage() {
           </button>
         </form>
 
+        {/* Login link */}
         <p className="font-body text-sm text-teal-800/70 mt-6 text-center">
           Already have an account?{' '}
-          <a href="/login" className="text-terracotta-600 hover:underline">
+          <Link
+            href="/login"
+            className="text-terracotta-600 hover:underline"
+          >
             Log in
-          </a>
+          </Link>
         </p>
       </div>
     </main>

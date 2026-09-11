@@ -26,10 +26,10 @@ export default function NavHeader() {
     }
 
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
-  headers: {
-    Authorization: `Bearer ${token}`,
-  },
-})
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setRole(data?.role ?? null))
       .catch(() => setRole(null));
@@ -63,6 +63,7 @@ export default function NavHeader() {
 
   const isArtisan = role === 'artisan';
   const isAdmin = role === 'admin';
+  const canSeeDashboard = isArtisan || isAdmin;
 
   const navLink =
     'text-sm font-medium text-teal-900 transition-colors hover:text-terracotta-600 whitespace-nowrap';
@@ -357,12 +358,14 @@ export default function NavHeader() {
         <div className="hidden items-center gap-4 md:flex">
           {isLoggedIn ? (
             <>
-              <Link
-                href="/dashboard"
-                className={navLink}
-              >
-                Dashboard
-              </Link>
+              {canSeeDashboard && (
+                <Link
+                  href="/dashboard"
+                  className={navLink}
+                >
+                  Dashboard
+                </Link>
+              )}
 
               <button
                 onClick={handleLogout}
@@ -555,12 +558,14 @@ export default function NavHeader() {
 
             {isLoggedIn ? (
               <>
-                <Link
-                  href="/dashboard"
-                  className="block rounded-xl px-4 py-3 font-medium text-teal-900 hover:bg-white"
-                >
-                  Dashboard
-                </Link>
+                {canSeeDashboard && (
+                  <Link
+                    href="/dashboard"
+                    className="block rounded-xl px-4 py-3 font-medium text-teal-900 hover:bg-white"
+                  >
+                    Dashboard
+                  </Link>
+                )}
 
                 <button
                   onClick={handleLogout}

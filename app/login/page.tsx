@@ -19,7 +19,12 @@ export default function LoginPage() {
     try {
       const data = await loginUser(phone, password);
       localStorage.setItem('amana_token', data.accessToken);
-      router.push('/dashboard');
+
+      if (data.user.role === 'artisan' || data.user.role === 'admin') {
+        router.push('/dashboard');
+      } else {
+        router.push('/');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {

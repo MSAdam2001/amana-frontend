@@ -1,5 +1,4 @@
-
-const API_BASE_URL = 'https://amana-backend-2.onrender.com';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export async function loginUser(phone: string, password: string) {
   const response = await fetch(`${API_BASE_URL}/auth/login`, {
