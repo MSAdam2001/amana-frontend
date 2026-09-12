@@ -1,75 +1,75 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { registerUser, loginUser } from '@/lib/api/auth';
+import { registerUser } from '@/lib/api/auth';
 
 export default function RegisterPage() {
-  const router = useRouter();
-
   const [role, setRole] = useState<'customer' | 'artisan'>('customer');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [tradeCategory, setTradeCategory] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [registered, setRegistered] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
     setError('');
     setLoading(true);
 
     try {
-      // 1. Create the user account
-      await registerUser(phone, password, role);
+      await registerUser(phone, email, password, role);
 
-      // 2. Automatically log the user in
-      const loginData = await loginUser(phone, password);
-
-      // 3. Save JWT token
-      localStorage.setItem('amana_token', loginData.accessToken);
-
-      // 4. If the user is an artisan, create their artisan profile
+      // Save the intended trade so we can create the artisan
+      // profile right after the user verifies and logs in.
       if (role === 'artisan') {
-        const response = await fetch(
-  ` ${process.env.NEXT_PUBLIC_API_URL}/profiles/artisan`,
-  {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${loginData.accessToken}`,
-            },
-            body: JSON.stringify({
-              tradeCategory: tradeCategory || 'general',
-              longitude: 8.5167,
-              latitude: 12.0,
-            }),
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => null);
-
-          throw new Error(
-            errorData?.message || 'Failed to create artisan profile'
-          );
-        }
-
-        // 5. Send artisan to the Profile section of the dashboard
-        router.push('/dashboard?section=profile');
-      } else {
-        // Customer goes to homepage
-        router.push('/');
+        localStorage.setItem('amana_pending_trade', tradeCategory || 'general');
       }
+
+      setRegistered(true);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Something went wrong'
-      );
+      setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setLoading(false);
     }
+  }
+
+  if (registered) {
+    return (
+      <main className="min-h-screen bg-sand-50 flex items-center justify-center px-6">
+        <div className="w-full max-w-sm text-center">
+          <p className="font-body text-sm tracking-wide uppercase text-terracotta-600 mb-2">
+            Amana
+          </p>
+
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-teal-900/5 text-3xl">
+            📧
+          </div>
+
+          <h1 className="font-display text-3xl text-teal-900 mb-3">
+            Check your email
+          </h1>
+
+          <p className="font-body text-sm text-teal-800/70 leading-6 mb-8">
+            We sent a verification link to <strong>{email}</strong>. Click
+            the link to activate your account, then come back and log in.
+          </p>
+
+          <Link
+            href="/login"
+            className="font-body inline-flex w-full items-center justify-center bg-terracotta-600 hover:bg-terracotta-700 text-sand-50 px-6 py-3 rounded-sm transition-colors"
+          >
+            Go to login
+          </Link>
+
+          <p className="font-body text-sm text-teal-800/50 mt-6">
+            Didn&apos;t get the email? Check your spam folder.
+          </p>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -125,6 +125,22 @@ export default function RegisterPage() {
               required
               className="font-body w-full border border-teal-800/30 rounded-sm px-4 py-2.5 bg-white text-teal-900 focus:outline-none focus:border-terracotta-600"
               placeholder="08012345678"
+            />
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="font-body text-sm text-teal-800 block mb-1">
+              Email address
+            </label>
+
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="font-body w-full border border-teal-800/30 rounded-sm px-4 py-2.5 bg-white text-teal-900 focus:outline-none focus:border-terracotta-600"
+              placeholder="you@example.com"
             />
           </div>
 
