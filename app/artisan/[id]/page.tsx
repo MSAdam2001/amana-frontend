@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   getArtisanProfile,
@@ -10,20 +10,6 @@ import {
   ArtisanReview,
 } from '@/lib/api/profiles';
 import { createBooking } from '@/lib/api/bookings';
-
-const CATEGORY_ICONS: Record<string, string> = {
-  plumber: '🔧',
-  electrician: '⚡',
-  carpenter: '🪚',
-  tailor: '🧵',
-  mechanic: '🚗',
-  'solar technician': '☀️',
-  painter: '🎨',
-  mason: '🧱',
-  'ac technician': '❄️',
-  welder: '🔥',
-  cleaner: '🧹',
-};
 
 const CATEGORY_LABELS: Record<string, string> = {
   plumber: 'Plumber',
@@ -37,1591 +23,578 @@ const CATEGORY_LABELS: Record<string, string> = {
   'ac technician': 'AC Technician',
   welder: 'Welder',
   cleaner: 'Cleaner',
+  'phone technician': 'Phone Technician',
+};
+
+const CATEGORY_MARKS: Record<string, string> = {
+  plumber: 'PL',
+  electrician: 'EL',
+  carpenter: 'CA',
+  tailor: 'TA',
+  mechanic: 'ME',
+  'solar technician': 'SO',
+  painter: 'PA',
+  mason: 'MA',
+  'ac technician': 'AC',
+  welder: 'WE',
+  cleaner: 'CL',
+  'phone technician': 'PH',
 };
 
 function formatCategory(category?: string) {
   if (!category) return 'Artisan';
-
   return (
     CATEGORY_LABELS[category.toLowerCase()] ||
-    category
-      .replace(/[-_]/g, ' ')
-      .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    category.replace(/[-_]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
   );
+}
+
+function getCategoryMark(category?: string) {
+  return CATEGORY_MARKS[category?.toLowerCase() || ''] || 'AM';
 }
 
 function getSocialUrl(platform: string, value: string) {
   if (!value) return '#';
-
-  if (
-    value.startsWith('http://') ||
-    value.startsWith('https://')
-  ) {
-    return value;
-  }
-
-  const cleanValue = value.replace(/^@/, '');
-
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  const clean = value.replace(/^@/, '');
   switch (platform) {
-    case 'instagram':
-      return `https://instagram.com/${cleanValue}`;
-
-    case 'facebook':
-      return `https://facebook.com/${cleanValue}`;
-
-    case 'tiktok':
-      return `https://tiktok.com/@${cleanValue}`;
-
-    case 'x':
-      return `https://x.com/${cleanValue}`;
-
-    default:
-      return value;
+    case 'instagram': return `https://instagram.com/${clean}`;
+    case 'facebook': return `https://facebook.com/${clean}`;
+    case 'tiktok': return `https://tiktok.com/@${clean}`;
+    case 'x': return `https://x.com/${clean}`;
+    default: return value;
   }
+}
+
+function initials(value?: string) {
+  if (!value) return 'A';
+  return value
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+}
+
+function Stars({ value, large = false }: { value: number; large?: boolean }) {
+  return (
+    <span className={`inline-flex tracking-[0.12em] ${large ? 'text-lg' : 'text-sm'}`} aria-label={`${value} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <span key={star} className={star <= Math.round(value) ? 'text-gold-500' : 'text-teal-900/15'}>★</span>
+      ))}
+    </span>
+  );
 }
 
 export default function ArtisanProfilePage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
 
-  const [profile, setProfile] =
-    useState<ArtisanProfileDetail | null>(null);
-
+  const [profile, setProfile] = useState<ArtisanProfileDetail | null>(null);
   const [reviews, setReviews] = useState<ArtisanReview[]>([]);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
   const [showBookingForm, setShowBookingForm] = useState(false);
-
   const [description, setDescription] = useState('');
-
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState('');
   const [bookingSent, setBookingSent] = useState(false);
-
-  const [selectedImage, setSelectedImage] =
-    useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showAllReviews, setShowAllReviews] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-
+    let active = true;
     setLoading(true);
     setError('');
 
-    getArtisanProfile(id)
-      .then((data) => {
+    Promise.all([
+      getArtisanProfile(id),
+      getReviewsForArtisan(id).catch(() => [] as ArtisanReview[]),
+    ])
+      .then(([data, reviewData]) => {
+        if (!active) return;
         setProfile(data);
+        setReviews(reviewData);
       })
       .catch(() => {
-        setError('This artisan profile could not be found.');
+        if (active) setError('This artisan profile could not be found.');
       })
       .finally(() => {
-        setLoading(false);
+        if (active) setLoading(false);
       });
 
-    getReviewsForArtisan(id)
-      .then((data) => {
-        setReviews(data);
-      })
-      .catch(() => {
-        setReviews([]);
-      });
+    return () => { active = false; };
   }, [id]);
 
-  async function handleBookingSubmit(
-    e: React.FormEvent<HTMLFormElement>
-  ) {
-    e.preventDefault();
+  const categoryName = formatCategory(profile?.tradeCategory);
+  const mark = getCategoryMark(profile?.tradeCategory);
+  const rating = profile && profile.ratingCount > 0 ? profile.ratingAvg : 0;
+  const photos = profile?.portfolioPhotos || [];
+  const visibleReviews = showAllReviews ? reviews : reviews.slice(0, 3);
+  const memberSince = profile?.createdAt
+    ? new Date(profile.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : null;
 
+  const socialLinks = useMemo(() => [
+    { key: 'instagram', label: 'Instagram', value: profile?.socialMedia?.instagram, mark: 'IG' },
+    { key: 'facebook', label: 'Facebook', value: profile?.socialMedia?.facebook, mark: 'f' },
+    { key: 'tiktok', label: 'TikTok', value: profile?.socialMedia?.tiktok, mark: 'TK' },
+    { key: 'x', label: 'X', value: profile?.socialMedia?.x, mark: 'X' },
+  ].filter((item) => item.value), [profile]);
+
+  async function handleBookingSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     if (!description.trim()) {
       setBookingError('Please describe the job.');
       return;
     }
-
     setBookingLoading(true);
     setBookingError('');
-
     try {
-      await createBooking({
-        artisanProfileId: id,
-        description: description.trim(),
-      });
-
+      await createBooking({ artisanProfileId: id, description: description.trim() });
       setBookingSent(true);
       setShowBookingForm(false);
       setDescription('');
     } catch (err: any) {
-      setBookingError(
-        err?.message || 'Failed to send booking request.'
-      );
+      setBookingError(err?.message || 'Failed to send booking request.');
     } finally {
       setBookingLoading(false);
     }
   }
 
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-sand-50">
-        <div className="max-w-6xl mx-auto px-6 py-10">
-          <div className="h-5 w-32 bg-teal-900/10 rounded-full animate-pulse mb-8" />
-
-          <div className="bg-white rounded-3xl border border-teal-900/10 p-6 md:p-10">
-            <div className="flex flex-col md:flex-row gap-6">
-              <div className="w-28 h-28 rounded-2xl bg-teal-900/10 animate-pulse" />
-
-              <div className="flex-1 space-y-4">
-                <div className="h-8 bg-teal-900/10 rounded-lg w-2/3 animate-pulse" />
-                <div className="h-5 bg-teal-900/10 rounded-lg w-1/3 animate-pulse" />
-                <div className="h-4 bg-teal-900/10 rounded-lg w-1/2 animate-pulse" />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid lg:grid-cols-[1fr_340px] gap-8 mt-8">
-            <div className="space-y-6">
-              {[1, 2, 3].map((item) => (
-                <div
-                  key={item}
-                  className="h-40 bg-white rounded-2xl border border-teal-900/10 animate-pulse"
-                />
-              ))}
-            </div>
-
-            <div className="hidden lg:block h-72 bg-white rounded-2xl border border-teal-900/10 animate-pulse" />
-          </div>
-        </div>
-      </main>
-    );
+  function openBooking() {
+    setBookingSent(false);
+    setBookingError('');
+    setShowBookingForm(true);
   }
+
+  function handleMessage() {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('amana_token') : null;
+    if (!token) {
+      router.push(`/login?redirect=/artisan/${id}`);
+      return;
+    }
+    router.push('/dashboard?section=messages');
+  }
+
+  if (loading) return <LoadingState />;
 
   if (error || !profile) {
     return (
-      <main className="min-h-screen bg-sand-50 flex items-center justify-center px-6">
-        <div className="max-w-md w-full text-center bg-white border border-teal-900/10 rounded-3xl p-10 shadow-sm">
-          <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-terracotta-50 flex items-center justify-center text-3xl">
-            😕
-          </div>
-
-          <h1 className="font-display text-2xl text-teal-900 mb-3">
-            Artisan not found
-          </h1>
-
-          <p className="font-body text-teal-800/60 mb-7">
-            {error || 'We could not find this artisan profile.'}
-          </p>
-
-          <Link
-            href="/search"
-            className="inline-flex items-center justify-center bg-terracotta-600 hover:bg-terracotta-700 text-white font-body font-semibold px-6 py-3 rounded-xl transition-all hover:-translate-y-0.5"
-          >
-            ← Browse artisans
-          </Link>
+      <main className="min-h-screen bg-sand-50 flex items-center justify-center px-5">
+        <div className="w-full max-w-md rounded-3xl border border-teal-900/10 bg-white p-9 text-center shadow-xl shadow-teal-900/5 animate-[fadeUp_.5s_ease-out]">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-900 text-white font-display text-xl">AM</div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-terracotta-600">Profile unavailable</p>
+          <h1 className="font-display text-3xl text-teal-900">Artisan not found</h1>
+          <p className="mt-3 text-sm leading-6 text-teal-900/60">{error || 'We could not find this artisan profile.'}</p>
+          <Link href="/search" className="mt-7 inline-flex rounded-xl bg-terracotta-600 px-6 py-3.5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-terracotta-700">Browse artisans</Link>
         </div>
+        <ProfileStyles />
       </main>
     );
   }
 
-  const icon =
-    CATEGORY_ICONS[profile.tradeCategory?.toLowerCase()] || '🛠️';
-
-  const categoryName = formatCategory(profile.tradeCategory);
-
-  const memberSince = profile.createdAt
-    ? new Date(profile.createdAt).toLocaleDateString('en-US', {
-        month: 'long',
-        year: 'numeric',
-      })
-    : null;
-
-  const rating =
-    profile.ratingCount > 0
-      ? profile.ratingAvg.toFixed(1)
-      : null;
-
-  const socials = [
-    {
-      key: 'instagram',
-      label: 'Instagram',
-      icon: '◎',
-      handle: profile.socialMedia?.instagram,
-    },
-    {
-      key: 'facebook',
-      label: 'Facebook',
-      icon: 'f',
-      handle: profile.socialMedia?.facebook,
-    },
-    {
-      key: 'tiktok',
-      label: 'TikTok',
-      icon: '♪',
-      handle: profile.socialMedia?.tiktok,
-    },
-  ].filter((social) => social.handle);
-
-  const portfolioPhotos = profile.portfolioPhotos || [];
-
-  /*
-   * Booking panel
-   */
-  const BookingPanel = ({
-    mobile = false,
-  }: {
-    mobile?: boolean;
-  }) => (
-    <div
-      className={`
-        bg-white border border-teal-900/10
-        ${mobile ? 'rounded-t-3xl' : 'rounded-3xl'}
-        p-6 md:p-7 shadow-xl shadow-teal-900/5
-      `}
-    >
-      <div className="flex items-start justify-between gap-4 mb-5">
-        <div>
-          <p className="font-body text-xs uppercase tracking-widest text-terracotta-600 font-semibold mb-2">
-            Hire this artisan
-          </p>
-
-          <h3 className="font-display text-2xl text-teal-900">
-            {categoryName}
-          </h3>
-        </div>
-
-        <div className="w-12 h-12 rounded-xl bg-sand-50 flex items-center justify-center text-2xl">
-          {icon}
-        </div>
-      </div>
-
-      {rating ? (
-        <div className="flex items-center gap-2 mb-6">
-          <span className="text-gold-500 text-lg">★</span>
-
-          <span className="font-body font-semibold text-teal-900">
-            {rating}
-          </span>
-
-          <span className="font-body text-sm text-teal-800/50">
-            ({profile.ratingCount}{' '}
-            {profile.ratingCount === 1 ? 'review' : 'reviews'})
-          </span>
-        </div>
-      ) : (
-        <p className="font-body text-sm text-teal-800/50 mb-6">
-          No reviews yet
-        </p>
-      )}
-
-      {bookingSent ? (
-        <div className="rounded-2xl bg-teal-900/5 border border-teal-900/10 p-5">
-          <div className="w-10 h-10 rounded-full bg-teal-900 text-white flex items-center justify-center mb-3">
-            ✓
-          </div>
-
-          <p className="font-body font-semibold text-teal-900 mb-1">
-            Request sent successfully
-          </p>
-
-          <p className="font-body text-sm text-teal-800/60 leading-relaxed">
-            Your booking request has been sent to this artisan.
-          </p>
-        </div>
-      ) : showBookingForm ? (
-        <form
-          onSubmit={handleBookingSubmit}
-          className="space-y-4"
-        >
-          <div>
-            <label
-              htmlFor="job-description"
-              className="block font-body text-sm font-semibold text-teal-900 mb-2"
-            >
-              Tell the artisan about the job
-            </label>
-
-            <textarea
-              id="job-description"
-              required
-              value={description}
-              onChange={(e) =>
-                setDescription(e.target.value)
-              }
-              placeholder="Example: I need help fixing a leaking pipe in my kitchen..."
-              rows={5}
-              className="
-                w-full
-                font-body
-                text-sm
-                text-teal-900
-                placeholder:text-teal-800/35
-                bg-sand-50
-                border border-teal-900/10
-                rounded-xl
-                px-4 py-3
-                resize-none
-                focus:outline-none
-                focus:border-terracotta-600
-                focus:ring-4
-                focus:ring-terracotta-600/10
-                transition-all
-              "
-            />
-          </div>
-
-          {bookingError && (
-            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-              <p className="font-body text-sm text-red-600">
-                {bookingError}
-              </p>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-2">
-            <button
-              type="submit"
-              disabled={bookingLoading}
-              className="
-                w-full
-                bg-terracotta-600
-                hover:bg-terracotta-700
-                disabled:opacity-60
-                disabled:cursor-not-allowed
-                text-white
-                font-body
-                font-semibold
-                px-5 py-3.5
-                rounded-xl
-                transition-all
-                hover:-translate-y-0.5
-                shadow-lg
-                shadow-terracotta-600/15
-              "
-            >
-              {bookingLoading
-                ? 'Sending request...'
-                : 'Send booking request'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowBookingForm(false);
-                setBookingError('');
-              }}
-              className="
-                w-full
-                border border-teal-900/15
-                hover:border-teal-900/30
-                text-teal-900
-                font-body
-                font-medium
-                px-5 py-3
-                rounded-xl
-                transition-colors
-              "
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : (
-        <div className="space-y-3">
-          <button
-            onClick={() => setShowBookingForm(true)}
-            className="
-              w-full
-              bg-terracotta-600
-              hover:bg-terracotta-700
-              text-white
-              font-body
-              font-semibold
-              px-6 py-3.5
-              rounded-xl
-              transition-all
-              hover:-translate-y-0.5
-              shadow-lg
-              shadow-terracotta-600/20
-            "
-          >
-            Hire this artisan
-          </button>
-
-          <button
-            type="button"
-            className="
-              w-full
-              border border-teal-900/15
-              hover:border-teal-900/30
-              hover:bg-sand-50
-              text-teal-900
-              font-body
-              font-semibold
-              px-6 py-3.5
-              rounded-xl
-              transition-all
-            "
-          >
-            Message artisan
-          </button>
-
-          <p className="font-body text-xs text-center text-teal-800/45 pt-2">
-            You can discuss the job before confirming.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-
   return (
-    <main className="min-h-screen bg-sand-50 pb-24 lg:pb-0">
+    <main className="min-h-screen bg-sand-50 pb-24 lg:pb-0 text-teal-900">
+      <ProfileStyles />
 
-      {/* =========================================================
-          TOP NAV / BREADCRUMB
-      ========================================================= */}
-      <div className="bg-white border-b border-teal-900/10">
-        <div className="max-w-6xl mx-auto px-5 md:px-6 py-4">
-          <Link
-            href="/search"
-            className="
-              inline-flex
-              items-center
-              gap-2
-              font-body
-              text-sm
-              text-teal-800/55
-              hover:text-terracotta-600
-              transition-colors
-            "
-          >
-            <span className="text-base">←</span>
+      {/* Top navigation */}
+      <div className="sticky top-0 z-30 border-b border-teal-900/10 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3.5 md:px-8">
+          <Link href="/search" className="group inline-flex items-center gap-2 text-sm font-semibold text-teal-900/60 transition hover:text-teal-900">
+            <span className="transition-transform group-hover:-translate-x-1">←</span>
             Back to artisans
           </Link>
+          <div className="hidden items-center gap-2 text-xs font-semibold text-teal-900/45 sm:flex">
+            <span className="h-1.5 w-1.5 rounded-full bg-teal-900/25" />
+            Artisan profile
+          </div>
         </div>
       </div>
 
-      {/* =========================================================
-          PROFILE HERO
-      ========================================================= */}
-      <section className="bg-white border-b border-teal-900/10">
-        <div className="max-w-6xl mx-auto px-5 md:px-6 py-8 md:py-12">
-
-          <div className="flex flex-col lg:flex-row lg:items-center gap-7">
-
-            {/* Avatar */}
-            <div className="relative shrink-0">
-              <div
-                className="
-                  w-28 h-28
-                  md:w-36 md:h-36
-                  rounded-3xl
-                  bg-sand-50
-                  border border-teal-900/10
-                  flex items-center justify-center
-                  text-5xl md:text-6xl
-                  shadow-sm
-                  overflow-hidden
-                "
-              >
-                {icon}
+      {/* Hero */}
+      <section className="relative overflow-hidden border-b border-teal-900/10 bg-white">
+        <div className="pointer-events-none absolute -right-32 -top-40 h-96 w-96 rounded-full bg-terracotta-600/10 blur-3xl" />
+        <div className="pointer-events-none absolute -left-32 bottom-0 h-72 w-72 rounded-full bg-gold-500/10 blur-3xl" />
+        <div className="relative mx-auto max-w-7xl px-5 py-9 md:px-8 md:py-14">
+          <div className="grid items-center gap-8 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
+            <div className="profile-enter relative mx-auto lg:mx-0">
+              <div className="relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-[2rem] border border-teal-900/10 bg-sand-50 shadow-lg shadow-teal-900/5 md:h-40 md:w-40">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(200,90,63,.16),transparent_45%)]" />
+                <span className="relative font-display text-4xl text-teal-900 md:text-5xl">{mark}</span>
               </div>
-
               {profile.isAvailable && (
-                <span
-                  className="
-                    absolute
-                    -bottom-2
-                    left-1/2
-                    -translate-x-1/2
-                    whitespace-nowrap
-                    bg-teal-900
-                    text-white
-                    font-body
-                    text-xs
-                    font-semibold
-                    px-3
-                    py-1.5
-                    rounded-full
-                    shadow-lg
-                  "
-                >
-                  ● Available now
+                <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-teal-900 px-3.5 py-1.5 text-[11px] font-bold text-white shadow-lg">
+                  <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-300 animate-pulse" />
+                  Available now
                 </span>
               )}
             </div>
 
-            {/* Main information */}
-            <div className="flex-1 min-w-0">
-
-              <div className="flex flex-wrap items-center gap-2 mb-3">
-                <span
-                  className="
-                    font-body
-                    text-xs
-                    uppercase
-                    tracking-widest
-                    font-semibold
-                    text-terracotta-600
-                  "
-                >
-                  {categoryName}
-                </span>
-
+            <div className="min-w-0 text-center lg:text-left">
+              <div className="profile-enter-delay-1 mb-3 flex flex-wrap items-center justify-center gap-2 lg:justify-start">
+                <span className="rounded-full bg-terracotta-600/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-terracotta-600">{categoryName}</span>
                 {profile.verificationStatus === 'verified' && (
-                  <span
-                    className="
-                      inline-flex
-                      items-center
-                      gap-1
-                      bg-teal-900
-                      text-white
-                      font-body
-                      text-xs
-                      font-semibold
-                      px-2.5
-                      py-1
-                      rounded-full
-                    "
-                  >
-                    ✓ Verified
+                  <span className="rounded-full border border-teal-900/10 bg-teal-900 px-3 py-1 text-[11px] font-bold text-white">✓ Verified</span>
+                )}
+              </div>
+
+              <h1 className="profile-enter-delay-2 font-display text-4xl leading-[1.05] tracking-tight text-teal-900 sm:text-5xl md:text-6xl">{categoryName}</h1>
+
+              <div className="profile-enter-delay-3 mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-teal-900/60 lg:justify-start">
+                {rating > 0 ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Stars value={rating} />
+                    <strong className="text-teal-900">{rating.toFixed(1)}</strong>
+                    <span>({profile.ratingCount} {profile.ratingCount === 1 ? 'review' : 'reviews'})</span>
                   </span>
-                )}
+                ) : <span>No reviews yet</span>}
+                <span className="hidden h-1 w-1 rounded-full bg-teal-900/20 sm:block" />
+                <span>● Kano, Northern Nigeria</span>
+                {memberSince && <><span className="hidden h-1 w-1 rounded-full bg-teal-900/20 sm:block" /><span>Member since {memberSince}</span></>}
               </div>
 
-              <h1
-                className="
-                  font-display
-                  text-4xl
-                  md:text-5xl
-                  text-teal-900
-                  leading-tight
-                  mb-4
-                "
-              >
-                {categoryName}
-              </h1>
-
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-5">
-
-                {rating ? (
-                  <div className="inline-flex items-center gap-2">
-                    <span className="text-gold-500 text-lg">
-                      ★
-                    </span>
-
-                    <span className="font-body font-semibold text-teal-900">
-                      {rating}
-                    </span>
-
-                    <span className="font-body text-sm text-teal-800/55">
-                      {profile.ratingCount}{' '}
-                      {profile.ratingCount === 1
-                        ? 'review'
-                        : 'reviews'}
-                    </span>
-                  </div>
-                ) : (
-                  <span className="font-body text-sm text-teal-800/50">
-                    No reviews yet
-                  </span>
-                )}
-
-                <span className="hidden sm:block w-1 h-1 rounded-full bg-teal-800/20" />
-
-                <span className="font-body text-sm text-teal-800/60">
-                  📍 Kano, Northern Nigeria
-                </span>
-
-                {memberSince && (
-                  <>
-                    <span className="hidden sm:block w-1 h-1 rounded-full bg-teal-800/20" />
-
-                    <span className="font-body text-sm text-teal-800/60">
-                      Member since {memberSince}
-                    </span>
-                  </>
-                )}
+              <div className="profile-enter-delay-4 mt-7 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
+                <button onClick={openBooking} className="rounded-xl bg-terracotta-600 px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-terracotta-600/20 transition duration-200 hover:-translate-y-0.5 hover:bg-terracotta-700">Hire this artisan</button>
+                <button onClick={handleMessage} className="rounded-xl border border-teal-900/15 bg-white px-6 py-3.5 text-sm font-bold text-teal-900 transition hover:-translate-y-0.5 hover:border-teal-900/30 hover:bg-sand-50">Message</button>
               </div>
+            </div>
 
-              {/* CTA */}
-              <div className="flex flex-col sm:flex-row gap-3 lg:hidden">
-                <button
-                  onClick={() => setShowBookingForm(true)}
-                  className="
-                    bg-terracotta-600
-                    hover:bg-terracotta-700
-                    text-white
-                    font-body
-                    font-semibold
-                    px-6 py-3
-                    rounded-xl
-                    transition-all
-                    hover:-translate-y-0.5
-                  "
-                >
-                  Hire this artisan
-                </button>
-
-                <button
-                  type="button"
-                  className="
-                    border border-teal-900/15
-                    hover:border-teal-900/30
-                    text-teal-900
-                    font-body
-                    font-semibold
-                    px-6 py-3
-                    rounded-xl
-                    transition-colors
-                  "
-                >
-                  Message
-                </button>
-              </div>
+            <div className="profile-enter-delay-2 hidden rounded-2xl border border-teal-900/10 bg-sand-50 p-5 lg:block lg:min-w-[180px]">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-teal-900/40">Experience</p>
+              <p className="mt-2 font-display text-4xl text-teal-900">{profile.yearsExperience || '—'}</p>
+              <p className="mt-1 text-xs text-teal-900/50">years in the trade</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* =========================================================
-          MAIN CONTENT
-      ========================================================= */}
-      <div
-        className="
-          max-w-6xl
-          mx-auto
-          px-5 md:px-6
-          py-8 md:py-12
-          grid
-          grid-cols-1
-          lg:grid-cols-[minmax(0,1fr)_360px]
-          gap-8
-          lg:gap-10
-        "
-      >
-
-        {/* =====================================================
-            LEFT COLUMN
-        ===================================================== */}
-        <div className="min-w-0 space-y-8">
-
-          {/* ===================================================
-              TRUST SUMMARY
-          =================================================== */}
-          <section>
-            <div
-              className="
-                grid
-                grid-cols-2
-                md:grid-cols-4
-                bg-white
-                border
-                border-teal-900/10
-                rounded-2xl
-                overflow-hidden
-                shadow-sm
-              "
-            >
-
-              <div className="p-5 border-r border-b md:border-b-0 border-teal-900/10">
-                <p className="font-display text-2xl text-teal-900">
-                  {rating || '—'}
-                </p>
-
-                <p className="font-body text-xs text-teal-800/50 mt-1">
-                  Rating
-                </p>
-              </div>
-
-              <div className="p-5 md:border-r border-b md:border-b-0 border-teal-900/10">
-                <p className="font-display text-2xl text-teal-900">
-                  {profile.ratingCount}
-                </p>
-
-                <p className="font-body text-xs text-teal-800/50 mt-1">
-                  Reviews
-                </p>
-              </div>
-
-              <div className="p-5 border-r border-teal-900/10">
-                <p className="font-display text-2xl text-teal-900">
-                  {profile.yearsExperience || '—'}
-                </p>
-
-                <p className="font-body text-xs text-teal-800/50 mt-1">
-                  Years experience
-                </p>
-              </div>
-
-              <div className="p-5">
-                <p className="font-display text-2xl text-teal-900">
-                  {profile.isAvailable ? 'Yes' : '—'}
-                </p>
-
-                <p className="font-body text-xs text-teal-800/50 mt-1">
-                  Available now
-                </p>
-              </div>
-            </div>
+      {/* Content */}
+      <div className="mx-auto grid max-w-7xl gap-8 px-5 py-9 md:px-8 md:py-12 lg:grid-cols-[minmax(0,1fr)_350px] lg:gap-10">
+        <div className="min-w-0 space-y-10">
+          {/* Quick trust row */}
+          <section className="profile-section grid grid-cols-2 overflow-hidden rounded-2xl border border-teal-900/10 bg-white shadow-sm sm:grid-cols-4">
+            <Stat value={rating > 0 ? rating.toFixed(1) : '—'} label="Rating" />
+            <Stat value={String(profile.ratingCount)} label="Reviews" border />
+            <Stat value={profile.yearsExperience ? String(profile.yearsExperience) : '—'} label="Years experience" border />
+            <Stat value={profile.isAvailable ? 'Yes' : '—'} label="Available now" border />
           </section>
 
-          {/* ===================================================
-              ABOUT
-          =================================================== */}
           {profile.bio && (
-            <section>
-              <div className="mb-4">
-                <p className="font-body text-xs uppercase tracking-widest font-semibold text-terracotta-600 mb-1">
-                  Get to know them
-                </p>
-
-                <h2 className="font-display text-3xl text-teal-900">
-                  About
-                </h2>
+            <Section title="About" eyebrow="Get to know the artisan">
+              <div className="rounded-2xl border border-teal-900/10 bg-white p-6 shadow-sm md:p-8">
+                <p className="whitespace-pre-line text-[15px] leading-8 text-teal-900/70 md:text-base">{profile.bio}</p>
               </div>
-
-              <div
-                className="
-                  bg-white
-                  border border-teal-900/10
-                  rounded-2xl
-                  p-6 md:p-7
-                  shadow-sm
-                "
-              >
-                <p className="font-body text-teal-800/75 leading-8">
-                  {profile.bio}
-                </p>
-              </div>
-            </section>
+            </Section>
           )}
 
-          {/* ===================================================
-              SERVICES
-          =================================================== */}
           {profile.skills?.length > 0 && (
-            <section>
-              <div className="mb-4">
-                <p className="font-body text-xs uppercase tracking-widest font-semibold text-terracotta-600 mb-1">
-                  What they do
-                </p>
-
-                <h2 className="font-display text-3xl text-teal-900">
-                  Services offered
-                </h2>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Section title="Services offered" eyebrow="What they do">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {profile.skills.map((skill, index) => (
-                  <div
-                    key={`${skill}-${index}`}
-                    className="
-                      group
-                      bg-white
-                      border border-teal-900/10
-                      hover:border-terracotta-600/40
-                      rounded-2xl
-                      p-5
-                      shadow-sm
-                      hover:shadow-md
-                      transition-all
-                      hover:-translate-y-0.5
-                    "
-                  >
+                  <div key={`${skill}-${index}`} className="group rounded-2xl border border-teal-900/10 bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-terracotta-600/30 hover:shadow-lg hover:shadow-teal-900/5" style={{ animationDelay: `${index * 60}ms` }}>
                     <div className="flex items-center gap-4">
-                      <div
-                        className="
-                          w-11 h-11
-                          rounded-xl
-                          bg-sand-50
-                          flex items-center justify-center
-                          text-xl
-                          shrink-0
-                          group-hover:scale-105
-                          transition-transform
-                        "
-                      >
-                        {icon}
-                      </div>
-
-                      <div>
-                        <p className="font-body font-semibold text-teal-900">
-                          {skill}
-                        </p>
-
-                        <p className="font-body text-xs text-teal-800/45 mt-1">
-                          Professional service
-                        </p>
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sand-50 text-xs font-black tracking-wider text-teal-900 transition group-hover:bg-teal-900 group-hover:text-white">{mark}</div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-teal-900">{skill}</p>
+                        <p className="mt-1 text-xs text-teal-900/40">Professional service</p>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </section>
+            </Section>
           )}
 
-          {/* ===================================================
-              EXPERIENCE
-          =================================================== */}
+          {/* Experience */}
           {profile.yearsExperience > 0 && (
-            <section>
-              <div className="mb-4">
-                <p className="font-body text-xs uppercase tracking-widest font-semibold text-terracotta-600 mb-1">
-                  Experience
-                </p>
-
-                <h2 className="font-display text-3xl text-teal-900">
-                  Professional experience
-                </h2>
-              </div>
-
-              <div
-                className="
-                  bg-teal-900
-                  rounded-2xl
-                  p-6 md:p-8
-                  relative
-                  overflow-hidden
-                "
-              >
-                <div
-                  className="
-                    absolute
-                    -right-16
-                    -top-16
-                    w-48
-                    h-48
-                    rounded-full
-                    bg-terracotta-600/10
-                    blur-2xl
-                  "
-                />
-
+            <section className="profile-section overflow-hidden rounded-3xl bg-teal-900 p-6 shadow-xl shadow-teal-900/10 md:p-9">
+              <div className="relative">
+                <div className="absolute -right-20 -top-28 h-64 w-64 rounded-full bg-terracotta-600/20 blur-3xl" />
                 <div className="relative flex items-center gap-5">
-                  <div
-                    className="
-                      w-16 h-16
-                      rounded-2xl
-                      bg-terracotta-600
-                      text-white
-                      flex items-center justify-center
-                      shrink-0
-                    "
-                  >
-                    <span className="font-display text-2xl">
-                      {profile.yearsExperience}
-                    </span>
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-terracotta-600 text-white shadow-lg">
+                    <span className="font-display text-2xl">{profile.yearsExperience}</span>
                   </div>
-
                   <div>
-                    <p className="font-display text-xl text-white">
-                      Years of experience
-                    </p>
-
-                    <p className="font-body text-sm text-white/60 mt-1">
-                      Experienced in {categoryName.toLowerCase()} and related work.
-                    </p>
+                    <p className="font-display text-2xl text-white">Years of practical experience</p>
+                    <p className="mt-1 text-sm leading-6 text-white/55">Experienced in {categoryName.toLowerCase()} and related work.</p>
                   </div>
                 </div>
               </div>
             </section>
           )}
 
-          {/* ===================================================
-              PORTFOLIO
-          =================================================== */}
-          <section>
-            <div className="flex items-end justify-between gap-4 mb-4">
-              <div>
-                <p className="font-body text-xs uppercase tracking-widest font-semibold text-terracotta-600 mb-1">
-                  Real work
-                </p>
-
-                <h2 className="font-display text-3xl text-teal-900">
-                  Portfolio
-                </h2>
-              </div>
-
-              {portfolioPhotos.length > 0 && (
-                <span className="font-body text-xs text-teal-800/45">
-                  {portfolioPhotos.length}{' '}
-                  {portfolioPhotos.length === 1
-                    ? 'project'
-                    : 'projects'}
-                </span>
-              )}
-            </div>
-
-            {portfolioPhotos.length === 0 ? (
-              <div
-                className="
-                  bg-white
-                  border border-dashed border-teal-900/15
-                  rounded-2xl
-                  p-10
-                  text-center
-                "
-              >
-                <div className="text-4xl mb-3">📸</div>
-
-                <p className="font-body font-semibold text-teal-900 mb-1">
-                  No portfolio photos yet
-                </p>
-
-                <p className="font-body text-sm text-teal-800/50">
-                  This artisan has not uploaded examples of their work yet.
-                </p>
-              </div>
+          {/* Portfolio */}
+          <Section title="Portfolio" eyebrow="Real work" action={photos.length > 0 ? `${photos.length} ${photos.length === 1 ? 'project' : 'projects'}` : undefined}>
+            {photos.length === 0 ? (
+              <EmptyCard title="No portfolio photos yet" text="This artisan has not uploaded examples of their work yet." mark="WORK" />
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-
-                {portfolioPhotos.map((url, index) => (
-                  <button
-                    key={`${url}-${index}`}
-                    type="button"
-                    onClick={() => setSelectedImage(url)}
-                    className="
-                      group
-                      relative
-                      aspect-square
-                      overflow-hidden
-                      rounded-2xl
-                      bg-teal-900/5
-                      border border-teal-900/10
-                      shadow-sm
-                      focus:outline-none
-                      focus:ring-4
-                      focus:ring-terracotta-600/20
-                    "
-                  >
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {photos.map((url, index) => (
+                  <button key={`${url}-${index}`} type="button" onClick={() => setSelectedImage(url)} className="group relative aspect-square overflow-hidden rounded-2xl border border-teal-900/10 bg-white shadow-sm transition duration-500 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-terracotta-600/20">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={url}
-                      alt={`Work sample ${index + 1}`}
-                      className="
-                        w-full
-                        h-full
-                        object-cover
-                        transition-transform
-                        duration-500
-                        group-hover:scale-105
-                      "
-                    />
-
-                    <div
-                      className="
-                        absolute
-                        inset-0
-                        bg-teal-900/0
-                        group-hover:bg-teal-900/25
-                        transition-colors
-                        flex
-                        items-center
-                        justify-center
-                      "
-                    >
-                      <span
-                        className="
-                          opacity-0
-                          group-hover:opacity-100
-                          bg-white
-                          text-teal-900
-                          font-body
-                          text-xs
-                          font-semibold
-                          px-3
-                          py-2
-                          rounded-full
-                          transition-opacity
-                        "
-                      >
-                        View work
-                      </span>
-                    </div>
+                    <img src={url} alt={`Work sample ${index + 1}`} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                    <span className="absolute inset-x-3 bottom-3 translate-y-2 rounded-xl bg-teal-900/85 px-3 py-2 text-left text-xs font-semibold text-white opacity-0 backdrop-blur-sm transition duration-300 group-hover:translate-y-0 group-hover:opacity-100">View work</span>
                   </button>
                 ))}
               </div>
             )}
-          </section>
+          </Section>
 
-          {/* ===================================================
-              REVIEWS
-          =================================================== */}
-          <section>
-            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
-              <div>
-                <p className="font-body text-xs uppercase tracking-widest font-semibold text-terracotta-600 mb-1">
-                  Customer feedback
-                </p>
-
-                <h2 className="font-display text-3xl text-teal-900">
-                  Reviews
-                </h2>
-              </div>
-
-              {rating && (
-                <div className="flex items-center gap-2">
-                  <span className="text-gold-500 text-xl">
-                    ★
-                  </span>
-
-                  <span className="font-body font-bold text-teal-900">
-                    {rating}
-                  </span>
-
-                  <span className="font-body text-sm text-teal-800/50">
-                    from {profile.ratingCount}{' '}
-                    {profile.ratingCount === 1
-                      ? 'review'
-                      : 'reviews'}
-                  </span>
-                </div>
-              )}
-            </div>
-
+          {/* Reviews */}
+          <Section title="Reviews" eyebrow="Customer feedback" action={rating > 0 ? `${rating.toFixed(1)} / 5` : undefined}>
             {reviews.length === 0 ? (
-              <div
-                className="
-                  bg-white
-                  border border-teal-900/10
-                  rounded-2xl
-                  p-8
-                  text-center
-                  shadow-sm
-                "
-              >
-                <div className="text-4xl mb-3">⭐</div>
-
-                <p className="font-body font-semibold text-teal-900 mb-1">
-                  No reviews yet
-                </p>
-
-                <p className="font-body text-sm text-teal-800/50">
-                  Be one of the first customers to leave a review.
-                </p>
-              </div>
+              <EmptyCard title="No reviews yet" text="Be one of the first customers to leave a review." mark="5.0" />
             ) : (
               <div className="space-y-3">
-                {reviews.map((review) => (
-                  <article
-                    key={review._id}
-                    className="
-                      bg-white
-                      border border-teal-900/10
-                      rounded-2xl
-                      p-5 md:p-6
-                      shadow-sm
-                      hover:shadow-md
-                      transition-shadow
-                    "
-                  >
-                    <div className="flex items-start justify-between gap-4 mb-4">
+                {visibleReviews.map((review, index) => (
+                  <article key={review._id} className="rounded-2xl border border-teal-900/10 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md md:p-6" style={{ animationDelay: `${index * 70}ms` }}>
+                    <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
-                        <div
-                          className="
-                            w-10 h-10
-                            rounded-full
-                            bg-sand-50
-                            border border-teal-900/10
-                            flex items-center justify-center
-                            text-sm
-                          "
-                        >
-                          👤
-                        </div>
-
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sand-50 text-xs font-bold text-teal-900">AM</div>
                         <div>
-                          <p className="font-body text-sm font-semibold text-teal-900">
-                            Amana customer
-                          </p>
-
-                          <p className="font-body text-xs text-teal-800/45">
-                            Customer review
-                          </p>
+                          <p className="text-sm font-bold text-teal-900">Amana customer</p>
+                          <p className="mt-0.5 text-xs text-teal-900/40">Customer review</p>
                         </div>
                       </div>
-
-                      <span
-                        className="
-                          inline-flex
-                          items-center
-                          gap-1
-                          bg-gold-400/10
-                          text-gold-500
-                          font-body
-                          text-sm
-                          font-bold
-                          px-3
-                          py-1.5
-                          rounded-full
-                        "
-                      >
-                        ★ {review.rating}
-                      </span>
+                      <span className="rounded-full bg-gold-500/10 px-3 py-1.5 text-xs font-bold text-teal-900"><span className="text-gold-500">★</span> {review.rating}</span>
                     </div>
-
-                    {review.comment && (
-                      <p className="font-body text-sm md:text-base text-teal-800/75 leading-7">
-                        “{review.comment}”
-                      </p>
-                    )}
-
-                    <p className="font-body text-xs text-teal-800/40 mt-4">
-                      {new Date(
-                        review.createdAt
-                      ).toLocaleDateString('en-US', {
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric',
-                      })}
-                    </p>
+                    {review.comment && <p className="mt-5 text-sm leading-7 text-teal-900/70 md:text-base">“{review.comment}”</p>}
+                    <p className="mt-4 text-xs text-teal-900/35">{new Date(review.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                   </article>
                 ))}
+                {reviews.length > 3 && (
+                  <button onClick={() => setShowAllReviews((value) => !value)} className="w-full rounded-xl border border-teal-900/10 bg-white px-4 py-3 text-sm font-bold text-teal-900 transition hover:border-teal-900/25 hover:bg-sand-50">
+                    {showAllReviews ? 'Show fewer reviews' : `View all ${reviews.length} reviews`}
+                  </button>
+                )}
               </div>
             )}
-          </section>
+          </Section>
 
-          {/* ===================================================
-              SOCIAL MEDIA
-          =================================================== */}
-          {socials.length > 0 && (
-            <section>
-              <div className="mb-4">
-                <p className="font-body text-xs uppercase tracking-widest font-semibold text-terracotta-600 mb-1">
-                  More from this artisan
-                </p>
-
-                <h2 className="font-display text-3xl text-teal-900">
-                  Follow their work
-                </h2>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {socials.map((social) => (
-                  <a
-                    key={social.key}
-                    href={getSocialUrl(
-                      social.key,
-                      social.handle!
-                    )}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="
-                      group
-                      bg-white
-                      border border-teal-900/10
-                      hover:border-terracotta-600/40
-                      rounded-2xl
-                      p-5
-                      shadow-sm
-                      hover:shadow-md
-                      transition-all
-                      hover:-translate-y-0.5
-                    "
-                  >
+          {/* Socials */}
+          {socialLinks.length > 0 && (
+            <Section title="Follow their work" eyebrow="More from this artisan">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {socialLinks.map((social) => (
+                  <a key={social.key} href={getSocialUrl(social.key, social.value!)} target="_blank" rel="noopener noreferrer" className="group flex items-center justify-between rounded-2xl border border-teal-900/10 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-terracotta-600/30 hover:shadow-lg">
                     <div className="flex items-center gap-4">
-                      <div
-                        className="
-                          w-11 h-11
-                          rounded-xl
-                          bg-sand-50
-                          text-teal-900
-                          flex items-center justify-center
-                          font-bold
-                          text-xl
-                          group-hover:bg-terracotta-600
-                          group-hover:text-white
-                          transition-colors
-                        "
-                      >
-                        {social.icon}
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="font-body font-semibold text-teal-900">
-                          {social.label}
-                        </p>
-
-                        <p className="font-body text-xs text-teal-800/45 truncate mt-1">
-                          {social.handle}
-                        </p>
+                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sand-50 text-xs font-black text-teal-900 transition group-hover:bg-terracotta-600 group-hover:text-white">{social.mark}</div>
+                      <div>
+                        <p className="font-semibold text-teal-900">{social.label}</p>
+                        <p className="mt-1 max-w-[180px] truncate text-xs text-teal-900/40">{social.value}</p>
                       </div>
                     </div>
+                    <span className="text-teal-900/30 transition group-hover:translate-x-1 group-hover:text-terracotta-600">↗</span>
                   </a>
                 ))}
               </div>
-            </section>
+            </Section>
           )}
 
-          {/* ===================================================
-              LOCATION
-          =================================================== */}
-          <section>
-            <div className="mb-4">
-              <p className="font-body text-xs uppercase tracking-widest font-semibold text-terracotta-600 mb-1">
-                Service area
-              </p>
-
-              <h2 className="font-display text-3xl text-teal-900">
-                Location
-              </h2>
-            </div>
-
-            <div
-              className="
-                bg-white
-                border border-teal-900/10
-                rounded-2xl
-                overflow-hidden
-                shadow-sm
-              "
-            >
-              {/* Map placeholder */}
-              <div
-                className="
-                  h-52
-                  md:h-64
-                  bg-teal-900
-                  relative
-                  overflow-hidden
-                  flex
-                  items-center
-                  justify-center
-                "
-              >
-                <div
-                  className="
-                    absolute
-                    inset-0
-                    opacity-10
-                    bg-[radial-gradient(circle_at_center,white_1px,transparent_1px)]
-                    bg-[length:24px_24px]
-                  "
-                />
-
+          {/* Location */}
+          <Section title="Location" eyebrow="Service area">
+            <div className="overflow-hidden rounded-2xl border border-teal-900/10 bg-white shadow-sm">
+              <div className="relative flex h-56 items-center justify-center overflow-hidden bg-teal-900 md:h-64">
+                <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,white_1px,transparent_1px)] [background-size:24px_24px]" />
                 <div className="relative text-center">
-                  <div
-                    className="
-                      w-14 h-14
-                      mx-auto
-                      rounded-full
-                      bg-terracotta-600
-                      text-white
-                      flex
-                      items-center
-                      justify-center
-                      text-2xl
-                      shadow-xl
-                      shadow-black/20
-                      animate-pulse
-                    "
-                  >
-                    📍
-                  </div>
-
-                  <p className="font-body font-semibold text-white mt-3">
-                    Kano
-                  </p>
-
-                  <p className="font-body text-xs text-white/50 mt-1">
-                    Approximate service area
-                  </p>
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-4 border-white/15 bg-terracotta-600 text-xs font-black text-white shadow-2xl animate-pulse">KANO</div>
+                  <p className="mt-4 font-display text-2xl text-white">Kano</p>
+                  <p className="mt-1 text-xs text-white/45">Approximate service area</p>
                 </div>
               </div>
-
               <div className="p-6">
-                <p className="font-body font-semibold text-teal-900 mb-1">
-                  Kano, Northern Nigeria
-                </p>
-
-                <p className="font-body text-sm text-teal-800/55 leading-6">
-                  This shows the artisan&apos;s general service area.
-                  The exact job location should only be shared when
-                  arranging a booking.
-                </p>
+                <p className="font-semibold text-teal-900">Kano, Northern Nigeria</p>
+                <p className="mt-2 text-sm leading-6 text-teal-900/55">This shows the artisan's general service area. Exact job details can be discussed when arranging a booking.</p>
               </div>
             </div>
-          </section>
+          </Section>
 
-          {/* ===================================================
-              SAFETY
-          =================================================== */}
-          <section>
-            <div
-              className="
-                bg-terracotta-50
-                border border-terracotta-600/15
-                rounded-2xl
-                p-6 md:p-7
-              "
-            >
-              <div className="flex items-start gap-4">
-                <div
-                  className="
-                    w-11 h-11
-                    rounded-xl
-                    bg-white
-                    flex items-center
-                    justify-center
-                    text-xl
-                    shrink-0
-                    border border-terracotta-600/10
-                  "
-                >
-                  🛡️
-                </div>
-
-                <div>
-                  <h2 className="font-display text-xl text-teal-900 mb-2">
-                    Stay safe with Amana
-                  </h2>
-
-                  <p className="font-body text-sm text-teal-800/65 leading-6 mb-4">
-                    Confirm the job details before work begins and
-                    keep your booking information available. Never
-                    share passwords or OTP codes with anyone.
-                  </p>
-
-                  <Link
-                    href="/safety"
-                    className="
-                      inline-flex
-                      font-body
-                      text-sm
-                      font-semibold
-                      text-terracotta-600
-                      hover:text-terracotta-700
-                      transition-colors
-                    "
-                  >
-                    Read Safety & Trust guide →
-                  </Link>
-                </div>
+          {/* Safety */}
+          <section className="profile-section rounded-2xl border border-terracotta-600/15 bg-terracotta-600/5 p-6 md:p-7">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-terracotta-600/10 bg-white text-xs font-black text-terracotta-600">SAFE</div>
+              <div>
+                <h2 className="font-display text-xl text-teal-900">Stay safe with Amana</h2>
+                <p className="mt-2 text-sm leading-6 text-teal-900/60">Confirm job details before work begins and keep your booking information available. Never share passwords or OTP codes with anyone.</p>
+                <Link href="/safety" className="mt-4 inline-flex text-sm font-bold text-terracotta-600 transition hover:text-terracotta-700">Read Safety & Trust guide →</Link>
               </div>
             </div>
           </section>
         </div>
 
-        {/* =====================================================
-            RIGHT COLUMN — STICKY HIRE CARD
-        ===================================================== */}
+        {/* Desktop booking rail */}
         <aside className="hidden lg:block">
-          <div className="sticky top-24">
-            <BookingPanel />
-
-            {/* Small trust card */}
-            <div
-              className="
-                mt-4
-                bg-white
-                border border-teal-900/10
-                rounded-2xl
-                p-5
-              "
-            >
-              <p className="font-body text-xs uppercase tracking-widest text-teal-800/40 font-semibold mb-4">
-                Why use Amana?
-              </p>
-
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <span className="text-base">👤</span>
-
-                  <div>
-                    <p className="font-body text-sm font-semibold text-teal-900">
-                      Artisan profiles
-                    </p>
-
-                    <p className="font-body text-xs text-teal-800/50 mt-1">
-                      See skills and examples of work.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <span className="text-base">⭐</span>
-
-                  <div>
-                    <p className="font-body text-sm font-semibold text-teal-900">
-                      Customer reviews
-                    </p>
-
-                    <p className="font-body text-xs text-teal-800/50 mt-1">
-                      Learn from previous customer experiences.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <span className="text-base">📍</span>
-
-                  <div>
-                    <p className="font-body text-sm font-semibold text-teal-900">
-                      Local artisans
-                    </p>
-
-                    <p className="font-body text-xs text-teal-800/50 mt-1">
-                      Find skilled people around your area.
-                    </p>
-                  </div>
-                </div>
+          <div className="sticky top-24 space-y-4">
+            <BookingCard
+              categoryName={categoryName}
+              rating={rating}
+              ratingCount={profile.ratingCount}
+              showBookingForm={showBookingForm}
+              bookingSent={bookingSent}
+              description={description}
+              bookingLoading={bookingLoading}
+              bookingError={bookingError}
+              setDescription={setDescription}
+              onOpen={openBooking}
+              onClose={() => { setShowBookingForm(false); setBookingError(''); }}
+              onSubmit={handleBookingSubmit}
+              onMessage={handleMessage}
+            />
+            <div className="rounded-2xl border border-teal-900/10 bg-white p-5 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-teal-900/35">Before you hire</p>
+              <div className="mt-4 space-y-4">
+                <TrustItem mark="01" title="Review the profile" text="Check services, experience and work samples." />
+                <TrustItem mark="02" title="Discuss the job" text="Share the details before confirming the work." />
+                <TrustItem mark="03" title="Keep your booking" text="Use Amana's booking information for reference." />
               </div>
             </div>
           </div>
         </aside>
       </div>
 
-      {/* =========================================================
-          MOBILE BOTTOM BAR
-      ========================================================= */}
-      <div
-        className="
-          lg:hidden
-          fixed
-          bottom-0
-          left-0
-          right-0
-          z-40
-          bg-white
-          border-t border-teal-900/10
-          p-3
-          shadow-2xl
-          shadow-teal-900/10
-        "
-      >
+      {/* Mobile action bar */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-teal-900/10 bg-white/95 p-3 shadow-2xl backdrop-blur-xl lg:hidden">
         {bookingSent ? (
-          <div className="flex items-center justify-center gap-2 py-2">
-            <span className="w-7 h-7 rounded-full bg-teal-900 text-white flex items-center justify-center text-sm">
-              ✓
-            </span>
-
-            <p className="font-body text-sm font-semibold text-teal-900">
-              Booking request sent
-            </p>
-          </div>
+          <div className="flex items-center justify-center gap-2 py-2 text-sm font-bold text-teal-900"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-900 text-white">✓</span> Booking request sent</div>
         ) : (
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className="
-                flex-1
-                border border-teal-900/15
-                text-teal-900
-                font-body
-                font-semibold
-                px-4 py-3
-                rounded-xl
-              "
-            >
-              Message
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowBookingForm(true)}
-              className="
-                flex-[1.4]
-                bg-terracotta-600
-                hover:bg-terracotta-700
-                text-white
-                font-body
-                font-semibold
-                px-4 py-3
-                rounded-xl
-                transition-colors
-              "
-            >
-              Hire artisan
-            </button>
+          <div className="mx-auto flex max-w-xl gap-2">
+            <button onClick={handleMessage} className="flex-1 rounded-xl border border-teal-900/15 bg-white px-4 py-3 text-sm font-bold text-teal-900">Message</button>
+            <button onClick={openBooking} className="flex-[1.4] rounded-xl bg-terracotta-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-terracotta-600/20">Hire artisan</button>
           </div>
         )}
       </div>
 
-      {/* =========================================================
-          MOBILE BOOKING SHEET
-      ========================================================= */}
+      {/* Mobile booking sheet */}
       {showBookingForm && (
-        <div
-          className="
-            lg:hidden
-            fixed
-            inset-0
-            z-50
-            bg-teal-900/50
-            backdrop-blur-sm
-            flex
-            items-end
-          "
-          onClick={() => {
-            setShowBookingForm(false);
-            setBookingError('');
-          }}
-        >
-          <div
-            className="w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <BookingPanel mobile />
+        <div className="fixed inset-0 z-50 flex items-end bg-teal-900/60 p-0 backdrop-blur-sm lg:hidden" onClick={() => setShowBookingForm(false)}>
+          <div className="w-full max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <BookingCard
+              mobile
+              categoryName={categoryName}
+              rating={rating}
+              ratingCount={profile.ratingCount}
+              showBookingForm
+              bookingSent={bookingSent}
+              description={description}
+              bookingLoading={bookingLoading}
+              bookingError={bookingError}
+              setDescription={setDescription}
+              onOpen={openBooking}
+              onClose={() => { setShowBookingForm(false); setBookingError(''); }}
+              onSubmit={handleBookingSubmit}
+              onMessage={handleMessage}
+            />
           </div>
         </div>
       )}
 
-      {/* =========================================================
-          PORTFOLIO LIGHTBOX
-      ========================================================= */}
+      {/* Image lightbox */}
       {selectedImage && (
-        <div
-          className="
-            fixed
-            inset-0
-            z-[60]
-            bg-teal-900/90
-            backdrop-blur-sm
-            flex
-            items-center
-            justify-center
-            p-5
-          "
-          onClick={() => setSelectedImage(null)}
-        >
-          <button
-            type="button"
-            onClick={() => setSelectedImage(null)}
-            className="
-              absolute
-              top-5
-              right-5
-              w-11
-              h-11
-              rounded-full
-              bg-white/10
-              hover:bg-white/20
-              text-white
-              flex
-              items-center
-              justify-center
-              text-xl
-              transition-colors
-            "
-            aria-label="Close image"
-          >
-            ×
-          </button>
-
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-teal-900/90 p-5 backdrop-blur-md" onClick={() => setSelectedImage(null)}>
+          <button onClick={() => setSelectedImage(null)} aria-label="Close image" className="absolute right-5 top-5 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-2xl text-white transition hover:bg-white/20">×</button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={selectedImage}
-            alt="Artisan work"
-            onClick={(e) => e.stopPropagation()}
-            className="
-              max-w-full
-              max-h-[85vh]
-              object-contain
-              rounded-2xl
-              shadow-2xl
-            "
-          />
+          <img src={selectedImage} alt="Artisan work" onClick={(e) => e.stopPropagation()} className="max-h-[88vh] max-w-full rounded-2xl object-contain shadow-2xl animate-[zoomIn_.25s_ease-out]" />
         </div>
       )}
     </main>
   );
+}
+
+function Section({ title, eyebrow, action, children }: { title: string; eyebrow: string; action?: string; children: React.ReactNode }) {
+  return (
+    <section className="profile-section">
+      <div className="mb-4 flex items-end justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-terracotta-600">{eyebrow}</p>
+          <h2 className="mt-1 font-display text-3xl tracking-tight text-teal-900 md:text-4xl">{title}</h2>
+        </div>
+        {action && <span className="pb-1 text-xs font-semibold text-teal-900/40">{action}</span>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Stat({ value, label, border = false }: { value: string; label: string; border?: boolean }) {
+  return <div className={`p-5 ${border ? 'border-l border-teal-900/10' : ''}`}><p className="font-display text-2xl text-teal-900">{value}</p><p className="mt-1 text-xs text-teal-900/45">{label}</p></div>;
+}
+
+function EmptyCard({ title, text, mark }: { title: string; text: string; mark: string }) {
+  return <div className="rounded-2xl border border-dashed border-teal-900/15 bg-white p-9 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-sand-50 text-[10px] font-black tracking-wider text-teal-900">{mark}</div><p className="mt-4 font-semibold text-teal-900">{title}</p><p className="mx-auto mt-1 max-w-md text-sm leading-6 text-teal-900/45">{text}</p></div>;
+}
+
+function TrustItem({ mark, title, text }: { mark: string; title: string; text: string }) {
+  return <div className="flex items-start gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sand-50 text-[9px] font-black text-teal-900">{mark}</span><div><p className="text-sm font-bold text-teal-900">{title}</p><p className="mt-1 text-xs leading-5 text-teal-900/45">{text}</p></div></div>;
+}
+
+function BookingCard({
+  mobile = false,
+  categoryName,
+  rating,
+  ratingCount,
+  showBookingForm,
+  bookingSent,
+  description,
+  bookingLoading,
+  bookingError,
+  setDescription,
+  onOpen,
+  onClose,
+  onSubmit,
+  onMessage,
+}: {
+  mobile?: boolean;
+  categoryName: string;
+  rating: number;
+  ratingCount: number;
+  showBookingForm: boolean;
+  bookingSent: boolean;
+  description: string;
+  bookingLoading: boolean;
+  bookingError: string;
+  setDescription: (value: string) => void;
+  onOpen: () => void;
+  onClose: () => void;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  onMessage: () => void;
+}) {
+  return (
+    <div className={`${mobile ? 'rounded-t-3xl' : 'rounded-3xl'} border border-teal-900/10 bg-white p-6 shadow-2xl shadow-teal-900/10 md:p-7`}>
+      <div className="flex items-start justify-between gap-4">
+        <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-terracotta-600">Work with this artisan</p><h3 className="mt-2 font-display text-2xl text-teal-900">{categoryName}</h3></div>
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sand-50 text-xs font-black text-teal-900">HIRE</div>
+      </div>
+
+      <div className="mt-5 flex items-center gap-2">
+        {rating > 0 ? <><Stars value={rating} /><strong className="text-sm text-teal-900">{rating.toFixed(1)}</strong><span className="text-xs text-teal-900/45">({ratingCount})</span></> : <span className="text-sm text-teal-900/45">No reviews yet</span>}
+      </div>
+
+      {bookingSent ? (
+        <div className="mt-6 rounded-2xl border border-teal-900/10 bg-teal-900/5 p-5"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-900 text-white">✓</div><p className="mt-4 font-bold text-teal-900">Request sent successfully</p><p className="mt-1 text-sm leading-6 text-teal-900/55">Your booking request has been sent to this artisan.</p></div>
+      ) : showBookingForm ? (
+        <form onSubmit={onSubmit} className="mt-6 space-y-4">
+          <div><label htmlFor="job-description" className="mb-2 block text-sm font-bold text-teal-900">Tell the artisan about the job</label><textarea id="job-description" required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Example: I need help fixing a leaking pipe in my kitchen..." rows={5} className="w-full resize-none rounded-xl border border-teal-900/10 bg-sand-50 px-4 py-3 text-sm text-teal-900 outline-none transition focus:border-terracotta-600 focus:ring-4 focus:ring-terracotta-600/10" /></div>
+          {bookingError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{bookingError}</div>}
+          <button type="submit" disabled={bookingLoading} className="w-full rounded-xl bg-terracotta-600 px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-terracotta-600/15 transition hover:-translate-y-0.5 hover:bg-terracotta-700 disabled:cursor-not-allowed disabled:opacity-60">{bookingLoading ? 'Sending request...' : 'Send booking request'}</button>
+          <button type="button" onClick={onClose} className="w-full rounded-xl border border-teal-900/15 px-5 py-3 text-sm font-semibold text-teal-900 transition hover:bg-sand-50">Cancel</button>
+        </form>
+      ) : (
+        <div className="mt-6 space-y-3"><button onClick={onOpen} className="w-full rounded-xl bg-terracotta-600 px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-terracotta-600/20 transition hover:-translate-y-0.5 hover:bg-terracotta-700">Hire this artisan</button><button onClick={onMessage} className="w-full rounded-xl border border-teal-900/15 px-6 py-3.5 text-sm font-bold text-teal-900 transition hover:bg-sand-50">Message artisan</button><p className="pt-1 text-center text-[11px] leading-5 text-teal-900/40">Discuss the job before confirming your request.</p></div>
+      )}
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <main className="min-h-screen bg-sand-50"><ProfileStyles /><div className="mx-auto max-w-7xl px-5 py-10 md:px-8"><div className="h-4 w-28 animate-pulse rounded-full bg-teal-900/10" /><div className="mt-8 rounded-3xl border border-teal-900/10 bg-white p-7 md:p-10"><div className="flex flex-col gap-6 md:flex-row md:items-center"><div className="h-32 w-32 shrink-0 animate-pulse rounded-[2rem] bg-teal-900/10" /><div className="flex-1 space-y-4"><div className="h-4 w-28 animate-pulse rounded-full bg-teal-900/10" /><div className="h-12 w-2/3 animate-pulse rounded-xl bg-teal-900/10" /><div className="h-5 w-1/2 animate-pulse rounded-lg bg-teal-900/10" /></div></div></div><div className="mt-8 grid gap-8 lg:grid-cols-[1fr_350px]"><div className="space-y-5"><div className="h-28 animate-pulse rounded-2xl bg-white" /><div className="h-52 animate-pulse rounded-2xl bg-white" /><div className="h-64 animate-pulse rounded-2xl bg-white" /></div><div className="hidden h-80 animate-pulse rounded-3xl bg-white lg:block" /></div></div></main>
+  );
+}
+
+function ProfileStyles() {
+  return <style jsx global>{`@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}@keyframes zoomIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}.profile-enter{animation:fadeUp .55s ease-out both}.profile-enter-delay-1{animation:fadeUp .55s .08s ease-out both}.profile-enter-delay-2{animation:fadeUp .55s .14s ease-out both}.profile-enter-delay-3{animation:fadeUp .55s .2s ease-out both}.profile-enter-delay-4{animation:fadeUp .55s .26s ease-out both}.profile-section{animation:fadeUp .6s ease-out both}@media (prefers-reduced-motion:reduce){.profile-enter,.profile-enter-delay-1,.profile-enter-delay-2,.profile-enter-delay-3,.profile-enter-delay-4,.profile-section{animation:none!important}.animate-pulse{animation:none!important}}`}</style>;
 }

@@ -361,11 +361,11 @@ export default function DashboardPage() {
       router.push('/login');
       return;
     }
-fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
-  headers: {
-    Authorization: `Bearer ${token}`,
-  },
-})
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
       .then((res) => {
         if (!res.ok) {
           throw new Error('Session expired');
@@ -373,14 +373,18 @@ fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
 
         return res.json();
       })
-     .then((data) => {
-  if (data.role !== 'artisan' && data.role !== 'admin') {
-    router.push('/');
-    return;
-  }
-  setUser(data);
-  setLoading(false);
-})
+      .then((data) => {
+        if (data.role === 'admin') {
+          router.push('/admin');
+          return;
+        }
+        if (data.role !== 'artisan') {
+          router.push('/');
+          return;
+        }
+        setUser(data);
+        setLoading(false);
+      })
       .catch(() => {
         localStorage.removeItem('amana_token');
         router.push('/login');
@@ -549,44 +553,47 @@ fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
   /* =========================================================
      PROFILE SAVE
   ========================================================= */
+async function handleProfileSave(
+  event: React.FormEvent
+) {
+  event.preventDefault();
 
-  async function handleProfileSave(
-    event: React.FormEvent
-  ) {
-    event.preventDefault();
+  setProfileSaving(true);
+  setProfileSaved(false);
+  setProfileError('');
 
-    setProfileSaving(true);
-    setProfileSaved(false);
-    setProfileError('');
+  const skills = skillsText
+    .split(',')
+    .map((skill) => skill.trim())
+    .filter(Boolean);
 
-    const skills = skillsText
-      .split(',')
-      .map((skill) => skill.trim())
-      .filter(Boolean);
+  try {
+    const updated = await updateMyArtisanProfile({
+      bio,
+      yearsExperience,
+      skills,
+      portfolioPhotos: photos,
+    });
 
-    try {
-      const updated = await updateMyArtisanProfile({
-        bio,
-        yearsExperience,
-        skills,
-        portfolioPhotos: photos,
-      });
+    setMyProfile(updated);
+    setBio(updated.bio || '');
+    setYearsExperience(updated.yearsExperience || 0);
+    setSkillsText(updated.skills?.join(', ') || '');
+    setPhotos(updated.portfolioPhotos || []);
 
-      setMyProfile(updated);
+    setProfileSaved(true);
 
-      setProfileSaved(true);
-
-      setTimeout(() => {
-        setProfileSaved(false);
-      }, 3000);
-    } catch (err: any) {
-      setProfileError(
-        err.message || 'Failed to save your profile.'
-      );
-    } finally {
-      setProfileSaving(false);
-    }
+    setTimeout(() => {
+      setProfileSaved(false);
+    }, 3000);
+  } catch (err: any) {
+    setProfileError(
+      err.message || 'Failed to save your profile.'
+    );
+  } finally {
+    setProfileSaving(false);
   }
+}
 
   /* =========================================================
      PHOTO UPLOAD
@@ -1036,11 +1043,11 @@ fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
               </button>
 
               <button
-  onClick={() => navigateTo('profile')}
-  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/20 hover:bg-white/10 text-white text-sm font-semibold transition"
->
-  Edit profile
-</button>
+                onClick={() => navigateTo('profile')}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/20 hover:bg-white/10 text-white text-sm font-semibold transition"
+              >
+                Edit profile
+              </button>
             </div>
           </div>
         </section>
@@ -2145,28 +2152,28 @@ fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
   function renderSection() {
     switch (activeSection) {
       case 'overview':
-        return <OverviewSection />;
+        return OverviewSection();
 
       case 'jobs':
-        return <JobsSection />;
+        return JobsSection();
 
       case 'messages':
-        return <MessagesSection />;
+        return MessagesSection();
 
       case 'profile':
-        return <ProfileSection />;
+        return ProfileSection();
 
       case 'portfolio':
-        return <PortfolioSection />;
+        return PortfolioSection();
 
       case 'reviews':
-        return <ReviewsSection />;
+        return ReviewsSection();
 
       case 'settings':
-        return <SettingsSection />;
+        return SettingsSection();
 
       default:
-        return <OverviewSection />;
+        return OverviewSection();
     }
   }
 

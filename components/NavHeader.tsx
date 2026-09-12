@@ -358,14 +358,14 @@ export default function NavHeader() {
         <div className="hidden items-center gap-4 md:flex">
           {isLoggedIn ? (
             <>
-              {canSeeDashboard && (
-                <Link
-                  href="/dashboard"
-                  className={navLink}
-                >
-                  Dashboard
-                </Link>
-              )}
+             {canSeeDashboard && (
+  <Link
+    href={isAdmin ? '/admin' : '/dashboard'}
+    className={navLink}
+  >
+    Dashboard
+  </Link>
+)}
 
               <button
                 onClick={handleLogout}
