@@ -1,20 +1,21 @@
-
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { verifyEmail } from '@/lib/api/auth';
 
-export default function VerifyEmailPage() {
+function VerifyEmailContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
 
-  const [status, setStatus] = useState<
+  const [status, setStatus] = useState
     'loading' | 'success' | 'error'
   >('loading');
 
   const [message, setMessage] = useState('');
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -24,7 +25,33 @@ export default function VerifyEmailPage() {
     }
 
     verifyEmail(token)
-      .then(() => {
+      .then(async (data) => {
+        localStorage.setItem('amana_token', data.accessToken);
+
+        const pendingTrade = localStorage.getItem('amana_pending_trade');
+
+        if (pendingTrade && data.user.role === 'artisan') {
+          try {
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/profiles/artisan`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${data.accessToken}`,
+              },
+              body: JSON.stringify({
+                tradeCategory: pendingTrade,
+                longitude: 8.5167,
+                latitude: 12.0,
+              }),
+            });
+          } catch {
+            // Don't block verification success over this.
+          } finally {
+            localStorage.removeItem('amana_pending_trade');
+          }
+        }
+
+        setUserRole(data.user.role);
         setStatus('success');
       })
       .catch((err) => {
@@ -36,6 +63,23 @@ export default function VerifyEmailPage() {
         );
       });
   }, [token]);
+
+  useEffect(() => {
+    if (status === 'success' && userRole) {
+      const destination =
+        userRole === 'admin'
+          ? '/admin'
+          : userRole === 'artisan'
+          ? '/dashboard'
+          : '/';
+
+      const timer = setTimeout(() => {
+        router.push(destination);
+      }, 1800);
+
+      return () => clearTimeout(timer);
+    }
+  }, [status, userRole, router]);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-sand-50 flex items-center justify-center px-5 py-10">
@@ -109,15 +153,15 @@ export default function VerifyEmailPage() {
               </h1>
 
               <p className="mx-auto mt-4 max-w-sm text-sm leading-7 text-teal-800/60">
-                Your Amana account is now active. You can sign in and start
-                connecting with trusted people.
+                Your Amana account is now active. Taking you to your
+                account now...
               </p>
 
               <Link
                 href="/login"
                 className="group mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-terracotta-600 px-6 py-4 text-sm font-semibold text-white shadow-lg shadow-terracotta-600/20 transition-all duration-300 hover:-translate-y-0.5 hover:bg-terracotta-700 hover:shadow-xl"
               >
-                Go to login
+                Continue now
                 <span className="transition-transform duration-300 group-hover:translate-x-1">
                   →
                 </span>
@@ -174,5 +218,17 @@ export default function VerifyEmailPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-sand-50" />
+      }
+    >
+      <VerifyEmailContent />
+    </Suspense>
   );
 }
