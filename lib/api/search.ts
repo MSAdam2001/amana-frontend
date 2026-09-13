@@ -10,6 +10,7 @@ export interface ArtisanSearchResult {
   distanceMeters: number;
   rankingScore: number;
   portfolioPhotos?: string[];
+  isAvailable?: boolean;
   location: {
     type: string;
     coordinates: [number, number];
