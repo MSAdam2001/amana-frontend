@@ -1,9 +1,10 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export interface SocialMedia {
-  instagram?: string;
   facebook?: string;
+  instagram?: string;
   tiktok?: string;
+  x?: string;
 }
 
 export interface ArtisanProfileDetail {
